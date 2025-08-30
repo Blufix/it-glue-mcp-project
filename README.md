@@ -6,13 +6,24 @@ An intelligent MCP (Model Context Protocol) server that transforms IT Glue's uns
 
 - **Natural Language Queries**: Ask questions in plain English ("What's the router IP for Company A?")
 - **Zero Hallucination**: Returns accurate data or "no data available" - never guesses
-- **Multi-Database Architecture**: 
-  - PostgreSQL for structured data
-  - Neo4j for relationship mapping
-  - Qdrant for semantic search
-  - Redis for caching
-- **Real-time Sync**: Automated synchronization with IT Glue API
-- **Cross-Company Intelligence**: Find similar fixes across all clients (Phase 2)
+- **@Organization Commands**: Target specific organizations with @faucets or @[org_name]
+- **Smart Search**: Type-based matching (searches for "firewall" find Sophos devices)
+- **Rich Output**: Displays IP addresses, serial numbers, dates, status, and more
+- **100% READ-ONLY**: Production-safe, never modifies IT Glue data
+- **Security First**: Passwords never displayed, only metadata shown
+
+## 🏗️ Architecture
+
+### Active Components
+- **PostgreSQL**: Primary database for structured IT Glue data
+- **Qdrant**: Vector database for semantic search with embeddings
+- **Redis**: High-speed caching for query results (5-min TTL)
+- **Streamlit**: Web UI with chat interface and @organization commands
+
+### Provisioned (Not Yet Implemented)
+- **Neo4j**: Graph database ready for future relationship mapping and knowledge graph features
+  - Currently provisioned in Docker but not actively used
+  - Reserved for Phase 2: relationship analysis and dependency mapping
 
 ## 📋 Prerequisites
 
@@ -26,8 +37,8 @@ An intelligent MCP (Model Context Protocol) server that transforms IT Glue's uns
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/itglue-mcp-server.git
-cd itglue-mcp-server
+git clone https://github.com/Blufix/it-glue-mcp-project.git
+cd it-glue-mcp-project
 ```
 
 ### 2. Set Up Environment
@@ -69,11 +80,11 @@ docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 # Run database migrations
 poetry run alembic upgrade head
 
-# Create Neo4j constraints and indexes
-poetry run python scripts/init_neo4j.py
-
-# Initialize Qdrant collections
+# Initialize Qdrant collections (for vector search)
 poetry run python scripts/init_qdrant.py
+
+# Optional: Initialize Neo4j (currently not used but available for future knowledge graph features)
+# poetry run python scripts/init_neo4j.py
 ```
 
 ### 6. Run Initial Sync

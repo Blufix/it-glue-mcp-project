@@ -459,32 +459,47 @@ The IT Glue MCP Server transforms unstructured IT documentation into an instantl
 
 2. **Query Engine (`src/services/`)**: Natural language processing pipeline
    - Query parsing and intent detection
-   - Multi-database query orchestration
-   - Zero-hallucination validation layer
-   - Result ranking and formatting
+   - Direct IT Glue API queries (no local database sync currently)
+   - Smart type-based matching (firewall → Sophos devices)
+   - Result ranking and formatting with rich attributes
 
 3. **Data Layer**: Multi-database architecture
-   - **PostgreSQL**: Structured IT Glue data, user management
-   - **Neo4j**: Entity relationships (companies → configs → passwords)
-   - **Qdrant**: Vector embeddings for semantic search
-   - **Redis**: Query result caching, session management
+   - **PostgreSQL**: Structured IT Glue data, user management (ACTIVE)
+   - **Qdrant**: Vector embeddings for semantic search (ACTIVE)
+   - **Redis**: Query result caching, 5-min TTL (ACTIVE)
+   - **Neo4j**: Entity relationships - PROVISIONED BUT NOT IMPLEMENTED
+     - Currently included in Docker stack but not used in code
+     - Reserved for future knowledge graph features
+     - Will enable relationship mapping and dependency analysis
 
-4. **Sync Service (`src/sync/`)**: IT Glue data synchronization
-   - Incremental sync with rate limiting
-   - Entity extraction and relationship mapping
-   - Embedding generation pipeline
-   - Conflict resolution
+4. **IT Glue Integration (`src/services/itglue/`)**: Direct API access
+   - Real-time queries to IT Glue API
+   - Organization filtering with @commands
+   - Configuration, Password, Contact, Document queries
+   - 100% READ-ONLY operations for production safety
 
 5. **Frontend (`src/ui/`)**: Streamlit-based interface
-   - Chat-based query interface
-   - Organization browser
-   - Query history and favorites
-   - Admin dashboard
+   - Chat interface with @organization commands
+   - Smart search with type matching
+   - Rich output display (IP, serial, dates, status)
+   - Security: passwords never displayed
 
-### Data Flow
-1. **Query Path**: UI → MCP Client → MCP Server → Query Engine → Validation → Cache/Databases → Response
-2. **Sync Path**: IT Glue API → Sync Service → Data Processing → Neo4j/Qdrant/PostgreSQL
-3. **Embedding Path**: Document → Chunking → OpenAI/Local Model → Qdrant Storage
+### Data Flow (Current Implementation)
+1. **Query Path**: UI → Streamlit → IT Glue API → Response formatting → Display
+2. **Cache Path**: Query results → Redis (5-min TTL) → Fast retrieval
+3. **Future Sync Path**: IT Glue API → Sync Service → PostgreSQL/Qdrant → Local queries
+
+### Implementation Status
+**Currently Active:**
+- Direct IT Glue API queries (real-time data)
+- Streamlit UI with @organization commands
+- Redis caching for performance
+- Smart search with type matching
+
+**Provisioned but Not Implemented:**
+- Neo4j graph database (ready for knowledge graph features)
+- Full sync service (code exists but not actively used)
+- Vector embeddings in Qdrant (structure ready, not populated)
 
 ### Key Design Patterns
 - **Repository Pattern**: Unified data access interface across databases
