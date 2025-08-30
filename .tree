@@ -1,0 +1,41 @@
+# Quick Project Tree Reference
+
+```
+itglue-mcp-server/
+├── src/                    # Application source code
+│   ├── mcp/               # MCP protocol implementation
+│   ├── api/               # REST API layer
+│   ├── services/          # Business logic
+│   ├── clients/           # External service clients
+│   ├── models/            # Data models
+│   ├── repositories/      # Data access layer
+│   ├── utils/             # Utilities
+│   └── workers/           # Background tasks
+├── streamlit/             # Web UI application
+├── tests/                 # Test suite
+├── scripts/               # Utility scripts
+├── configs/               # Configuration files
+├── deployments/           # Deployment configs
+├── docs/                  # Documentation
+├── prd/                   # Product requirements
+├── migrations/            # Database migrations
+├── docker-compose.yml     # Local development
+└── pyproject.toml        # Python project config
+```
+
+## Key Files
+- `src/main.py` - Application entry point
+- `src/mcp/server.py` - MCP server core
+- `src/services/query_handler.py` - Query processing
+- `src/clients/itglue_client.py` - IT Glue API
+- `streamlit/app.py` - Web UI
+- `.env.example` - Environment template
+- `PROJECT_STRUCTURE.md` - Detailed structure
+
+## Quick Commands
+```bash
+make setup      # Setup environment
+make run        # Run application
+make test       # Run tests
+make docker     # Run in Docker
+```

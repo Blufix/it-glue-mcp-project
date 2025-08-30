@@ -1,0 +1,166 @@
+version: '3.9'
+
+# Development-specific overrides
+services:
+  # MCP Server (development mode with hot reload)
+  mcp-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mcp
+      target: development
+    container_name: itglue-mcp-dev
+    volumes:
+      - ./src:/app/src:rw
+      - ./config:/app/config:ro
+      - ./tests:/app/tests:rw
+      - mcp_data:/data
+    environment:
+      ENVIRONMENT: development
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      LOG_LEVEL: DEBUG
+      RELOAD: "true"
+    ports:
+      - "8000:8000"  # MCP stdio interface
+      - "8001:8001"  # WebSocket interface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - itglue-network
+    command: python -m src.mcp.server --reload --debug
+
+  # API Service (development mode)
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: development
+    container_name: itglue-api-dev
+    volumes:
+      - ./src:/app/src:rw
+      - ./config:/app/config:ro
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://postgres:Dfgytw6745g@postgres:5432/itglue
+      REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      QDRANT_URL: http://qdrant:6333
+      RELOAD: "true"
+    ports:
+      - "8002:8002"
+    depends_on:
+      - postgres
+      - redis
+      - neo4j
+      - qdrant
+    networks:
+      - itglue-network
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8002 --reload
+
+  # Sync Service (development mode)
+  sync-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sync
+      target: development
+    container_name: itglue-sync-dev
+    volumes:
+      - ./src:/app/src:rw
+      - ./config:/app/config:ro
+    environment:
+      ENVIRONMENT: development
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      DATABASE_URL: postgresql+asyncpg://postgres:Dfgytw6745g@postgres:5432/itglue
+      NEO4J_URI: bolt://neo4j:7687
+      QDRANT_URL: http://qdrant:6333
+      IT_GLUE_API_KEY: ${IT_GLUE_API_KEY}
+      LOG_LEVEL: DEBUG
+    depends_on:
+      - redis
+      - postgres
+      - neo4j
+      - qdrant
+    networks:
+      - itglue-network
+    command: watchmedo auto-restart --directory=./src --pattern="*.py" --recursive -- celery -A src.sync.tasks worker --loglevel=debug
+
+  # Celery Beat (development mode)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.sync
+      target: development
+    container_name: itglue-beat-dev
+    volumes:
+      - ./src:/app/src:rw
+      - ./config:/app/config:ro
+    environment:
+      ENVIRONMENT: development
+      CELERY_BROKER_URL: redis://redis:6379/0
+      LOG_LEVEL: DEBUG
+    depends_on:
+      - redis
+    networks:
+      - itglue-network
+    command: celery -A src.sync.tasks beat --loglevel=debug
+
+  # Streamlit UI (development mode)
+  streamlit:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.streamlit
+      target: development
+    container_name: itglue-streamlit-dev
+    volumes:
+      - ./src/ui:/app/src/ui:rw
+      - ./config:/app/config:ro
+      - streamlit_data:/app/.streamlit
+    environment:
+      ENVIRONMENT: development
+      MCP_SERVER_URL: ws://mcp-server:8001
+      API_URL: http://api:8002
+      STREAMLIT_SERVER_PORT: 8501
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
+      STREAMLIT_SERVER_ENABLE_CORS: "false"
+      STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    ports:
+      - "8501:8501"
+    depends_on:
+      - mcp-server
+      - api
+    networks:
+      - itglue-network
+    command: streamlit run src/ui/streamlit_app.py --server.runOnSave=true
+
+  # Jupyter Lab for development/debugging
+  jupyter:
+    image: jupyter/scipy-notebook:latest
+    container_name: itglue-jupyter
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-jupyter}
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./src:/home/jovyan/src:ro
+      - ./data:/home/jovyan/data
+    ports:
+      - "8888:8888"
+    networks:
+      - itglue-network
+    profiles:
+      - dev
+
+volumes:
+  mcp_data:
+    driver: local
+  streamlit_data:
+    driver: local
