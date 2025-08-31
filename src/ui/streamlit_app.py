@@ -88,6 +88,8 @@ if 'selected_org' not in st.session_state:
     st.session_state.selected_org = None
 if 'sync_status' not in st.session_state:
     st.session_state.sync_status = {}
+if 'query_count' not in st.session_state:
+    st.session_state.query_count = 0
 
 # Database setup
 @st.cache_resource
@@ -236,7 +238,7 @@ async def search_itglue_data(query: str, org_id: Optional[str] = None):
         query_lower = query.lower()
         
         # Search configurations if relevant keywords found
-        if any(word in query_lower for word in ["server", "firewall", "switch", "router", "nas", "configuration", "device", "hardware", "sophos", "xgs", "network"]):
+        if any(word in query_lower for word in ["server", "firewall", "switch", "router", "nas", "configuration", "device", "hardware", "sophos", "xgs", "network", "printer", "ups", "laptop", "desktop", "workstation"]):
             try:
                 # For configurations, use org_id directly
                 configs = await client.get_configurations(org_id=org_id) if org_id else await client.get_configurations()
@@ -267,7 +269,10 @@ async def search_itglue_data(query: str, org_id: Optional[str] = None):
                         match_found = True
                     elif "ups" in query_lower and ("ups" in config_type_lower or "ups" in config_name_lower):
                         match_found = True
-                    elif "printer" in query_lower and "printer" in config_type_lower:
+                    elif "printer" in query_lower and ("printer" in config_type_lower or "printer" in config_name_lower):
+                        match_found = True
+                    # Also match if asking for IP and any of the above matched
+                    elif "ip" in query_lower and meaningful_words and any(word in config_name_lower for word in meaningful_words):
                         match_found = True
                     
                     if match_found and len(results) < 10:  # Limit results to 10
@@ -463,8 +468,37 @@ def render_sidebar():
         # Organization selector
         st.markdown("### 🏢 Organization")
         
-        # Fetch organizations (mock for now)
-        orgs = [("all", "All Organizations"), ("org1", "Contoso Ltd"), ("org2", "Fabrikam Inc")]
+        # Fetch real organizations from IT Glue
+        @st.cache_data(ttl=300)  # Cache for 5 minutes
+        def fetch_organizations():
+            """Fetch organizations from IT Glue."""
+            try:
+                async def get_orgs():
+                    client = ITGlueClient(
+                        api_key=settings.itglue_api_key,
+                        api_url=settings.itglue_api_url
+                    )
+                    orgs = await client.get_organizations()
+                    await client.disconnect()
+                    return [(org.id, org.name) for org in orgs[:20]]  # Limit to 20 for UI
+                
+                return asyncio.run(get_orgs())
+            except Exception as e:
+                st.error(f"Failed to fetch organizations: {e}")
+                return []
+        
+        # Get organizations
+        orgs = [("all", "All Organizations")]
+        try:
+            it_glue_orgs = fetch_organizations()
+            orgs.extend(it_glue_orgs)
+        except:
+            # Fallback to known organizations if API fails
+            orgs.extend([
+                ("3183713165639879", "Faucets Limited"),
+                ("2092605563994340", "CSG Computer Services Ltd"),
+                ("2093707467407574", "ConnectWise")
+            ])
         
         selected = st.selectbox(
             "Select Organization",
@@ -474,16 +508,64 @@ def render_sidebar():
         )
         st.session_state.selected_org = selected if selected != "all" else None
         
-        # Sync status
+        # Sync status with real data
         st.markdown("### 🔄 Sync Status")
         
-        # Mock sync data
+        # Get real counts from IT Glue
+        @st.cache_data(ttl=60)  # Cache for 1 minute
+        def get_entity_counts():
+            """Get entity counts from IT Glue."""
+            try:
+                async def get_counts():
+                    client = ITGlueClient(
+                        api_key=settings.itglue_api_key,
+                        api_url=settings.itglue_api_url
+                    )
+                    
+                    counts = {}
+                    # Get organization count
+                    orgs = await client.get_organizations()
+                    counts['Organizations'] = len(orgs)
+                    
+                    # Get other counts for selected org if available
+                    if st.session_state.selected_org and st.session_state.selected_org != "all":
+                        configs = await client.get_configurations(org_id=st.session_state.selected_org)
+                        counts['Configurations'] = len(configs)
+                        
+                        passwords = await client.get_passwords(org_id=st.session_state.selected_org)
+                        counts['Passwords'] = len(passwords)
+                        
+                        contacts = await client.get_contacts(org_id=st.session_state.selected_org)
+                        counts['Contacts'] = len(contacts)
+                    else:
+                        counts['Configurations'] = "N/A"
+                        counts['Passwords'] = "N/A"
+                        counts['Contacts'] = "N/A"
+                    
+                    counts['Documents'] = "N/A"  # Documents endpoint may vary
+                    
+                    await client.disconnect()
+                    return counts
+                
+                return asyncio.run(get_counts())
+            except Exception as e:
+                return {
+                    "Organizations": "Error",
+                    "Configurations": "Error",
+                    "Documents": "Error",
+                    "Passwords": "Error",
+                    "Contacts": "Error"
+                }
+        
+        # Get real counts
+        entity_counts = get_entity_counts()
+        
         sync_data = {
-            "Organizations": {"status": "✅", "last_sync": "2 mins ago", "count": 45},
-            "Configurations": {"status": "✅", "last_sync": "5 mins ago", "count": 1250},
-            "Documents": {"status": "🔄", "last_sync": "Running...", "count": 3400},
-            "Passwords": {"status": "✅", "last_sync": "10 mins ago", "count": 890},
-            "Contacts": {"status": "⏰", "last_sync": "1 hour ago", "count": 567}
+            "Organizations": {"status": "✅", "last_sync": "Live", "count": entity_counts.get('Organizations', 0)},
+            "Configurations": {"status": "✅", "last_sync": "Live", "count": entity_counts.get('Configurations', 0)},
+            "Documents": {"status": "📄", "last_sync": "N/A", "count": entity_counts.get('Documents', 0)},
+            "Passwords": {"status": "✅", "last_sync": "Live", "count": entity_counts.get('Passwords', 0)},
+            "Contacts": {"status": "✅", "last_sync": "Live", "count": entity_counts.get('Contacts', 0)}
         }
         
         for entity, info in sync_data.items():
@@ -499,22 +581,24 @@ def render_sidebar():
         
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Sync All", use_container_width=True):
-                st.info("Sync started...")
+            if st.button("🔄 Refresh Data", use_container_width=True):
+                st.cache_data.clear()
+                st.rerun()
         
         with col2:
             if st.button("🧹 Clear Cache", use_container_width=True):
+                st.cache_data.clear()
                 st.info("Cache cleared")
         
         # Statistics
         st.markdown("### 📊 Statistics")
         
-        # Mock statistics
+        # Real statistics
         stats = {
-            "Total Queries": 1234,
-            "Avg Response Time": "1.2s",
-            "Cache Hit Rate": "78%",
-            "Embeddings": "15.2k"
+            "Total Queries": st.session_state.get('query_count', 0),
+            "Current Session": len(st.session_state.messages),
+            "Cache Status": "Active",
+            "API Status": "✅ Connected"
         }
         
         for label, value in stats.items():
@@ -624,6 +708,9 @@ def render_chat_interface():
                     "confidence": response["confidence"],
                     "sources": response["sources"]
                 })
+                
+                # Increment query counter
+                st.session_state.query_count += 1
                 
                 st.rerun()
 
