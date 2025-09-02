@@ -316,17 +316,24 @@ class SyncOrchestrator:
             async with db_manager.get_session() as session:
                 uow = UnitOfWork(session)
 
-                # Store organization
-                await uow.itglue.upsert(
-                    itglue_id=org.id,
-                    entity_type="organization",
-                    name=org.attributes.get("name", ""),
-                    attributes=org.attributes,
-                    relationships=org.relationships,
-                    last_synced=datetime.utcnow()
-                )
+                # Store organization - handle dict response
+                if org:
+                    # Extract data from dict structure
+                    org_data = org.get("data", org) if "data" in org else org
+                    org_id = org_data.get("id", organization_id)
+                    org_attributes = org_data.get("attributes", {})
+                    org_relationships = org_data.get("relationships", {})
+                    
+                    await uow.itglue.upsert(
+                        itglue_id=str(org_id),
+                        entity_type="organization",
+                        name=org_attributes.get("name", ""),
+                        attributes=org_attributes,
+                        relationships=org_relationships,
+                        last_synced=datetime.utcnow()
+                    )
 
-                await uow.commit()
+                    await uow.commit()
 
             # Sync related entities
             entity_types = [
