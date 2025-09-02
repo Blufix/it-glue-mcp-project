@@ -1,11 +1,10 @@
 """Intent classification for natural language IT queries."""
 
-import re
 import logging
-from typing import Dict, List, Any, Optional, Tuple
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from collections import Counter
 
 logger = logging.getLogger(__name__)
 
@@ -15,32 +14,32 @@ class QueryIntent(Enum):
     # Information retrieval
     RETRIEVAL = "retrieval"          # Get/show/list information
     SEARCH = "search"                # Find/search for items
-    
+
     # Troubleshooting & Investigation
     TROUBLESHOOTING = "troubleshooting"    # Fix errors, debug issues
     INVESTIGATION = "investigation"        # Who/what/when changed something
     ROOT_CAUSE = "root_cause"             # Find cause of issue
-    
+
     # Analysis & Reporting
     AUDIT = "audit"                  # Security/compliance auditing
     ANALYSIS = "analysis"            # Analyze dependencies, impact
     COMPARISON = "comparison"        # Compare configurations
     MONITORING = "monitoring"        # Check status, health
-    
+
     # Documentation & Help
     DOCUMENTATION = "documentation"  # How-to guides, procedures
     HELP = "help"                    # General help requests
-    
+
     # Actions
     CONFIGURATION = "configuration"  # Setup, configure, install
     UPDATE = "update"               # Update, patch, upgrade
     BACKUP = "backup"               # Backup, restore operations
-    
+
     # Relationship queries
     DEPENDENCY = "dependency"       # What depends on what
     IMPACT = "impact"              # What's affected by changes
     TOPOLOGY = "topology"          # Network/service maps
-    
+
     # Unknown
     UNKNOWN = "unknown"            # Cannot determine intent
 
@@ -50,32 +49,32 @@ class IntentClassification:
     """Result of intent classification."""
     primary_intent: QueryIntent
     confidence: float
-    secondary_intents: List[Tuple[QueryIntent, float]] = field(default_factory=list)
+    secondary_intents: list[tuple[QueryIntent, float]] = field(default_factory=list)
     query_strategy: str = ""
-    keywords_matched: List[str] = field(default_factory=list)
-    suggested_actions: List[str] = field(default_factory=list)
-    
+    keywords_matched: list[str] = field(default_factory=list)
+    suggested_actions: list[str] = field(default_factory=list)
+
 
 @dataclass
 class IntentPattern:
     """Pattern for matching query intent."""
     intent: QueryIntent
-    patterns: List[re.Pattern]
-    keywords: List[str]
+    patterns: list[re.Pattern]
+    keywords: list[str]
     weight: float = 1.0
-    context_boost: Dict[str, float] = field(default_factory=dict)
-    
+    context_boost: dict[str, float] = field(default_factory=dict)
+
 
 class IntentClassifier:
     """Classify the intent of natural language IT queries."""
-    
+
     def __init__(self):
         """Initialize the intent classifier."""
         self.intent_patterns = self._build_intent_patterns()
         self.strategy_mappings = self._build_strategy_mappings()
         self.action_mappings = self._build_action_mappings()
-        
-    def _build_intent_patterns(self) -> List[IntentPattern]:
+
+    def _build_intent_patterns(self) -> list[IntentPattern]:
         """Build patterns for intent classification."""
         return [
             # RETRIEVAL
@@ -89,7 +88,7 @@ class IntentClassifier:
                 keywords=["show", "list", "get", "display", "view", "fetch", "retrieve"],
                 weight=1.0
             ),
-            
+
             # SEARCH
             IntentPattern(
                 intent=QueryIntent.SEARCH,
@@ -101,7 +100,7 @@ class IntentClassifier:
                 keywords=["find", "search", "locate", "lookup", "where"],
                 weight=1.0
             ),
-            
+
             # TROUBLESHOOTING
             IntentPattern(
                 intent=QueryIntent.TROUBLESHOOTING,
@@ -115,7 +114,7 @@ class IntentClassifier:
                 weight=1.2,
                 context_boost={"recent": 1.5, "urgent": 2.0}
             ),
-            
+
             # INVESTIGATION
             IntentPattern(
                 intent=QueryIntent.INVESTIGATION,
@@ -127,7 +126,7 @@ class IntentClassifier:
                 keywords=["who", "when", "what", "changed", "modified", "investigate", "audit"],
                 weight=1.1
             ),
-            
+
             # ROOT_CAUSE
             IntentPattern(
                 intent=QueryIntent.ROOT_CAUSE,
@@ -139,7 +138,7 @@ class IntentClassifier:
                 keywords=["root", "cause", "why", "reason", "source"],
                 weight=1.3
             ),
-            
+
             # AUDIT
             IntentPattern(
                 intent=QueryIntent.AUDIT,
@@ -151,7 +150,7 @@ class IntentClassifier:
                 keywords=["audit", "compliance", "security", "review", "expired", "verify"],
                 weight=1.1
             ),
-            
+
             # ANALYSIS
             IntentPattern(
                 intent=QueryIntent.ANALYSIS,
@@ -163,7 +162,7 @@ class IntentClassifier:
                 keywords=["analyze", "analysis", "examine", "evaluate", "metrics", "statistics"],
                 weight=1.0
             ),
-            
+
             # COMPARISON
             IntentPattern(
                 intent=QueryIntent.COMPARISON,
@@ -174,7 +173,7 @@ class IntentClassifier:
                 keywords=["compare", "diff", "difference", "versus", "between", "similar"],
                 weight=1.0
             ),
-            
+
             # MONITORING
             IntentPattern(
                 intent=QueryIntent.MONITORING,
@@ -186,7 +185,7 @@ class IntentClassifier:
                 keywords=["status", "health", "monitor", "check", "performance", "metrics"],
                 weight=1.0
             ),
-            
+
             # DOCUMENTATION
             IntentPattern(
                 intent=QueryIntent.DOCUMENTATION,
@@ -198,7 +197,7 @@ class IntentClassifier:
                 keywords=["how", "guide", "manual", "documentation", "procedure", "tutorial"],
                 weight=1.0
             ),
-            
+
             # CONFIGURATION
             IntentPattern(
                 intent=QueryIntent.CONFIGURATION,
@@ -209,7 +208,7 @@ class IntentClassifier:
                 keywords=["configure", "setup", "install", "deploy", "setting"],
                 weight=1.0
             ),
-            
+
             # UPDATE
             IntentPattern(
                 intent=QueryIntent.UPDATE,
@@ -220,7 +219,7 @@ class IntentClassifier:
                 keywords=["update", "upgrade", "patch", "migrate", "version"],
                 weight=1.0
             ),
-            
+
             # BACKUP
             IntentPattern(
                 intent=QueryIntent.BACKUP,
@@ -231,7 +230,7 @@ class IntentClassifier:
                 keywords=["backup", "restore", "recover", "snapshot", "archive"],
                 weight=1.0
             ),
-            
+
             # DEPENDENCY
             IntentPattern(
                 intent=QueryIntent.DEPENDENCY,
@@ -243,7 +242,7 @@ class IntentClassifier:
                 keywords=["depend", "dependency", "require", "rely", "upstream", "downstream"],
                 weight=1.1
             ),
-            
+
             # IMPACT
             IntentPattern(
                 intent=QueryIntent.IMPACT,
@@ -255,7 +254,7 @@ class IntentClassifier:
                 keywords=["impact", "affect", "consequence", "blast", "radius", "happen"],
                 weight=1.2
             ),
-            
+
             # TOPOLOGY
             IntentPattern(
                 intent=QueryIntent.TOPOLOGY,
@@ -268,8 +267,8 @@ class IntentClassifier:
                 weight=1.0
             ),
         ]
-        
-    def _build_strategy_mappings(self) -> Dict[QueryIntent, str]:
+
+    def _build_strategy_mappings(self) -> dict[QueryIntent, str]:
         """Map intents to query strategies."""
         return {
             QueryIntent.RETRIEVAL: "direct_query",
@@ -290,8 +289,8 @@ class IntentClassifier:
             QueryIntent.TOPOLOGY: "topology_mapping",
             QueryIntent.UNKNOWN: "general_search"
         }
-        
-    def _build_action_mappings(self) -> Dict[QueryIntent, List[str]]:
+
+    def _build_action_mappings(self) -> dict[QueryIntent, list[str]]:
         """Map intents to suggested actions."""
         return {
             QueryIntent.RETRIEVAL: [
@@ -345,39 +344,39 @@ class IntentClassifier:
                 "Visualize architecture"
             ]
         }
-        
+
     def classify_intent(self, query: str) -> IntentClassification:
         """Classify the intent of a query."""
         query_lower = query.lower()
-        
+
         # Score each intent
-        intent_scores: Dict[QueryIntent, float] = {}
-        matched_keywords: Dict[QueryIntent, List[str]] = {}
-        
+        intent_scores: dict[QueryIntent, float] = {}
+        matched_keywords: dict[QueryIntent, list[str]] = {}
+
         for pattern_group in self.intent_patterns:
             score = 0.0
             keywords = []
-            
+
             # Check regex patterns
             for pattern in pattern_group.patterns:
                 if pattern.search(query):
                     score += pattern_group.weight
-                    
+
             # Check keywords
             for keyword in pattern_group.keywords:
                 if keyword.lower() in query_lower:
                     score += 0.5 * pattern_group.weight
                     keywords.append(keyword)
-                    
+
             # Apply context boosts
             for context_word, boost in pattern_group.context_boost.items():
                 if context_word in query_lower:
                     score *= boost
-                    
+
             if score > 0:
                 intent_scores[pattern_group.intent] = score
                 matched_keywords[pattern_group.intent] = keywords
-                
+
         # Determine primary intent
         if not intent_scores:
             return IntentClassification(
@@ -385,27 +384,27 @@ class IntentClassifier:
                 confidence=0.0,
                 query_strategy=self.strategy_mappings[QueryIntent.UNKNOWN]
             )
-            
+
         # Sort intents by score
         sorted_intents = sorted(intent_scores.items(), key=lambda x: x[1], reverse=True)
         primary_intent = sorted_intents[0][0]
         primary_score = sorted_intents[0][1]
-        
+
         # Calculate confidence
         total_score = sum(intent_scores.values())
         confidence = min(primary_score / max(total_score, 1.0), 1.0)
-        
+
         # Get secondary intents
         secondary_intents = [
-            (intent, score/total_score) 
+            (intent, score/total_score)
             for intent, score in sorted_intents[1:3]
             if score > 0.5
         ]
-        
+
         # Get strategy and actions
         strategy = self.strategy_mappings.get(primary_intent, "general_search")
         actions = self.action_mappings.get(primary_intent, [])
-        
+
         return IntentClassification(
             primary_intent=primary_intent,
             confidence=confidence,
@@ -414,53 +413,53 @@ class IntentClassifier:
             keywords_matched=matched_keywords.get(primary_intent, []),
             suggested_actions=actions
         )
-        
-    def classify_batch(self, queries: List[str]) -> List[IntentClassification]:
+
+    def classify_batch(self, queries: list[str]) -> list[IntentClassification]:
         """Classify multiple queries."""
         return [self.classify_intent(query) for query in queries]
-        
-    def get_intent_distribution(self, queries: List[str]) -> Dict[QueryIntent, float]:
+
+    def get_intent_distribution(self, queries: list[str]) -> dict[QueryIntent, float]:
         """Get distribution of intents across multiple queries."""
         classifications = self.classify_batch(queries)
         intent_counts = Counter(c.primary_intent for c in classifications)
-        
+
         total = len(classifications)
         return {
-            intent: count/total 
+            intent: count/total
             for intent, count in intent_counts.items()
         }
-        
-    def suggest_refinement(self, 
-                          query: str, 
-                          classification: IntentClassification) -> List[str]:
+
+    def suggest_refinement(self,
+                          query: str,
+                          classification: IntentClassification) -> list[str]:
         """Suggest query refinements based on classification."""
         suggestions = []
-        
+
         # Low confidence - suggest clarification
         if classification.confidence < 0.5:
             suggestions.append(f"Clarify if you want to {classification.primary_intent.value}")
-            
+
             # Suggest based on secondary intents
             for intent, _ in classification.secondary_intents:
                 suggestions.append(f"Or did you mean to {intent.value}?")
-                
+
         # Specific intent suggestions
         if classification.primary_intent == QueryIntent.TROUBLESHOOTING:
             if "error" not in query.lower():
                 suggestions.append("Include the specific error message")
             if "when" not in query.lower():
                 suggestions.append("Specify when the issue started")
-                
+
         elif classification.primary_intent == QueryIntent.INVESTIGATION:
             if not any(word in query.lower() for word in ["who", "when", "what"]):
                 suggestions.append("Specify what information you need (who/when/what)")
-                
+
         elif classification.primary_intent == QueryIntent.IMPACT:
             if "if" not in query.lower() and "when" not in query.lower():
                 suggestions.append("Specify the scenario (e.g., 'if server X fails')")
-                
+
         return suggestions
-        
+
     def is_action_query(self, classification: IntentClassification) -> bool:
         """Check if the query implies an action should be taken."""
         action_intents = {
@@ -470,9 +469,9 @@ class IntentClassifier:
             QueryIntent.TROUBLESHOOTING
         }
         return classification.primary_intent in action_intents
-        
-    def get_required_permissions(self, 
-                                classification: IntentClassification) -> List[str]:
+
+    def get_required_permissions(self,
+                                classification: IntentClassification) -> list[str]:
         """Get required permissions for the classified intent."""
         permission_map = {
             QueryIntent.RETRIEVAL: ["read"],
@@ -485,5 +484,5 @@ class IntentClassifier:
             QueryIntent.BACKUP: ["read", "backup"],
             QueryIntent.MONITORING: ["read", "monitor"]
         }
-        
+
         return permission_map.get(classification.primary_intent, ["read"])

@@ -10,6 +10,26 @@ from src.query.fuzzy_matcher import FuzzyMatcher, MatchResult
 logger = logging.getLogger(__name__)
 
 
+class NodeType(Enum):
+    """Neo4j node types for IT Glue entities."""
+    ORGANIZATION = "Organization"
+    CONFIGURATION = "Configuration"
+    CONTACT = "Contact"
+    DOCUMENT = "Document"
+    LOCATION = "Location"
+    FLEXIBLE_ASSET = "FlexibleAsset"
+    PASSWORD = "Password"
+    USER = "User"
+
+
+class QueryType(Enum):
+    """Query operation types."""
+    READ = "READ"
+    SEARCH = "SEARCH"
+    MATCH = "MATCH"
+    PATH = "PATH"
+
+
 class RelationshipType(Enum):
     """IT Glue relationship types in Neo4j."""
     # Organizational
@@ -43,6 +63,22 @@ class RelationshipType(Enum):
     AUTHENTICATES = "AUTHENTICATES"
     AUTHORIZES = "AUTHORIZES"
     SECURES = "SECURES"
+
+
+@dataclass
+class CypherQuery:
+    """Cypher query container."""
+    query: str
+    parameters: dict[str, Any]
+    query_type: Optional['QueryType'] = None
+
+
+@dataclass
+class QueryFilter:
+    """Query filter criteria."""
+    field: str
+    operator: str
+    value: Any
 
 
 @dataclass

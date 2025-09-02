@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Any, Optional
 
 from src.cache.manager import CacheManager
-from src.query.fuzzy_matcher import FuzzyMatcher
 from src.query.fuzzy_enhancer import QueryFuzzyEnhancer
+from src.query.fuzzy_matcher import FuzzyMatcher
 from src.query.neo4j_query_builder import Neo4jQueryBuilder
 from src.query.parser import QueryParser
 
@@ -24,7 +24,7 @@ class QueryIntent:
     suggested_queries: list[str]
     fuzzy_corrections: dict[str, str]
     secondary_intents: list[str] = None
-    
+
     def __post_init__(self):
         if self.secondary_intents is None:
             self.secondary_intents = []
@@ -105,11 +105,69 @@ class IntelligentQueryProcessor:
             (re.compile(r'(?:show|display|map)\s+network\s+(?:topology|map|layout)\s+(?:for|at|in)\s+(.+)', re.I),
              'network_topology', {}),
 
-            # Documentation
+            # Documentation (expanded)
             (re.compile(r'(?:show|find|get)\s+(?:docs?|documentation)\s+(?:for|about|on)\s+(.+)', re.I),
              'find_documentation', {}),
 
-            # Generic search
+            (re.compile(r'(?:find|search|show)\s+(?:runbooks?|guides?|knowledge\s+base)\s+(?:for|about|on)?\s*(.+)?', re.I),
+             'find_documentation', {'doc_type': 'runbook'}),
+
+            (re.compile(r'search\s+knowledge\s+base\s+(?:for\s+)?(.+)', re.I),
+             'find_documentation', {'doc_type': 'knowledge_base'}),
+
+            # Organizations
+            (re.compile(r'(?:show|list|get)\s+(?:all\s+)?organizations?', re.I),
+             'list_organizations', {}),
+
+            (re.compile(r'(?:find|search|lookup)\s+(?:organization|org|company|customer)\s+(.+)', re.I),
+             'find_organization', {}),
+
+            (re.compile(r'list\s+(?:all\s+)?(?:customers?|clients?)', re.I),
+             'list_organizations', {'type': 'customer'}),
+
+            # Locations (must be before generic find patterns)
+            (re.compile(r'(?:show|list|get)\s+(?:all\s+)?locations?\s+(?:for|at|in)\s+(.+)', re.I),
+             'find_locations', {}),
+
+            (re.compile(r'(?:find|show)\s+(.+?)\s+(?:office|site|location|branch)', re.I),
+             'find_location_by_city', {}),
+
+            (re.compile(r'(?:list|show)\s+(?:sites?|offices?|branches?)\s+(?:for|of)\s+(.+)', re.I),
+             'find_locations', {'filter': 'organization'}),
+
+            # Flexible Assets
+            (re.compile(r'(?:show|list|get)\s+(?:all\s+)?(?:SSL\s+)?(?:certificates?|certs?)', re.I),
+             'find_flexible_assets', {'type': 'SSL Certificate'}),
+
+            (re.compile(r'(?:show|list|find)\s+(?:warranties?|warranty\s+info)(?:\s+for\s+(.+))?', re.I),
+             'find_flexible_assets', {'type': 'Warranty'}),
+
+            (re.compile(r'(?:show|list|get)\s+(?:all\s+)?(.+?)\s+(?:assets?|licenses?)', re.I),
+             'find_flexible_assets', {}),
+
+            (re.compile(r'(?:show|list)\s+asset\s+types?', re.I),
+             'list_asset_types', {}),
+
+            (re.compile(r'what\s+(?:fields?|properties?)\s+does?\s+(.+?)\s+have', re.I),
+             'describe_asset_type', {}),
+
+            # Contacts
+            (re.compile(r'(?:find|show|get)\s+(?:contact\s+)?(?:info|information)\s+(?:for\s+)?(.+)', re.I),
+             'find_contact', {}),
+
+            (re.compile(r'(?:find|show|list)\s+(?:all\s+)?IT\s+(?:managers?|staff|team)\s+(?:for|at|in)\s+(.+)', re.I),
+             'find_contacts', {'title_filter': 'IT'}),
+
+            (re.compile(r'who\s+is\s+(?:the\s+)?(.+?)(?:\s+contact)?', re.I),
+             'find_contact_by_name', {}),
+
+            (re.compile(r'(?:find)\s+(.+?)\s+(?:contact|email|phone)', re.I),
+             'find_contact_by_name', {}),
+
+            (re.compile(r'(?:list|show)\s+(?:all\s+)?contacts?\s+(?:for|at|in)\s+(.+)', re.I),
+             'find_contacts', {}),
+
+            # Generic search (must be last to avoid overriding specific patterns)
             (re.compile(r'(?:search|find|lookup|query)\s+(.+)', re.I),
              'general_search', {}),
         ]
@@ -181,7 +239,7 @@ class IntelligentQueryProcessor:
         corrected_query = query
         fuzzy_corrections = {}
         overall_confidence = 1.0
-        
+
         if self.enable_fuzzy and self.query_enhancer:
             enhanced = self.query_enhancer.enhance_query(
                 query,
@@ -190,7 +248,7 @@ class IntelligentQueryProcessor:
             )
             corrected_query = enhanced.corrected_query
             overall_confidence = enhanced.overall_confidence
-            
+
             # Track corrections
             for token in enhanced.enhanced_tokens:
                 if token.corrections:
@@ -199,14 +257,14 @@ class IntelligentQueryProcessor:
                         'confidence': token.confidence,
                         'type': 'typo'
                     }
-        
+
         # Step 2: Detect intent and extract entities (using corrected query)
         intent = self._detect_intent(corrected_query)
         intent.fuzzy_corrections = fuzzy_corrections
-        
+
         # Adjust confidence based on fuzzy matching
         intent.confidence *= overall_confidence
-        
+
         # Fallback to exact match if confidence too low
         if intent.confidence < self.fuzzy_threshold and corrected_query != query:
             # Try with original query
@@ -266,38 +324,96 @@ class IntelligentQueryProcessor:
         return response
 
     def _detect_intent(self, query: str) -> QueryIntent:
-        """Detect query intent and extract entities."""
+        """Detect query intent and extract entities with disambiguation."""
         query_lower = query.lower().strip()
+
+        # Track all matching intents for disambiguation
+        matching_intents = []
 
         # Check against patterns
         for pattern, intent_name, default_entities in self.intent_patterns:
             match = pattern.match(query)
             if match:
                 entities = default_entities.copy()
+                confidence = 0.9  # Base confidence for pattern match
 
                 # Extract matched groups as entities
                 if match.groups():
                     # First group is usually the target entity
-                    target = match.group(1)
+                    target = match.group(1) if match.group(1) else ""
 
-                    # Try to identify what type of entity this is
-                    if any(org_keyword in target.lower() for org_keyword in ['company', 'client', 'organization']):
-                        entities['organization'] = target
-                    elif any(sys_keyword in target.lower() for sys_keyword in ['server', 'system', 'host', 'machine']):
-                        entities['configuration'] = target
-                    else:
-                        # Default to configuration for most IT queries
-                        entities['configuration'] = target
+                    # Enhanced entity type detection with disambiguation
+                    entity_type = self._determine_entity_type(target, intent_name)
+                    if entity_type:
+                        entities[entity_type] = target
+
+                    # Adjust confidence based on entity clarity
+                    if entity_type == 'ambiguous':
+                        confidence *= 0.9  # Minor reduction for ambiguous entities
+
+                matching_intents.append({
+                    'intent': intent_name,
+                    'entities': entities,
+                    'confidence': confidence,
+                    'match_span': match.span()
+                })
+
+        # Handle multiple matching intents (disambiguation)
+        if len(matching_intents) > 1:
+            # Sort by confidence and specificity
+            matching_intents.sort(key=lambda x: (x['confidence'], -x['match_span'][0]), reverse=True)
+
+            # Check if top intents have similar confidence
+            top_intent = matching_intents[0]
+            similar_intents = [i for i in matching_intents[1:3]
+                             if abs(i['confidence'] - top_intent['confidence']) < 0.1]
+
+            if similar_intents:
+                # Ambiguous - provide suggestions
+                suggested_queries = self._generate_disambiguation_suggestions(
+                    query, top_intent, similar_intents
+                )
 
                 return QueryIntent(
-                    primary_intent=intent_name,
-                    entities=entities,
-                    confidence=0.9,
-                    suggested_queries=[],
+                    primary_intent=top_intent['intent'],
+                    entities=top_intent['entities'],
+                    confidence=top_intent['confidence'] * 0.8,  # Reduce confidence due to ambiguity
+                    suggested_queries=suggested_queries,
+                    fuzzy_corrections={},
+                    secondary_intents=[i['intent'] for i in similar_intents]
+                )
+            else:
+                # Clear winner
+                return QueryIntent(
+                    primary_intent=top_intent['intent'],
+                    entities=top_intent['entities'],
+                    confidence=top_intent['confidence'],
+                    suggested_queries=self._generate_follow_up_suggestions(top_intent['intent']),
                     fuzzy_corrections={}
                 )
 
-        # Default to general search
+        elif len(matching_intents) == 1:
+            # Single clear match
+            match = matching_intents[0]
+
+            # For general_search, always provide clarification suggestions
+            if match['intent'] == 'general_search':
+                suggestions = self._suggest_query_clarifications(query)
+            else:
+                suggestions = self._generate_follow_up_suggestions(match['intent'])
+                # Ensure we have suggestions
+                if not suggestions:
+                    suggestions = self._suggest_query_clarifications(query)
+
+            return QueryIntent(
+                primary_intent=match['intent'],
+                entities=match['entities'],
+                confidence=match['confidence'],
+                suggested_queries=suggestions,
+                fuzzy_corrections={}
+            )
+
+        # No matches - default to general search with helpful suggestions
         return QueryIntent(
             primary_intent='general_search',
             entities={'query': query},
@@ -306,20 +422,147 @@ class IntelligentQueryProcessor:
             fuzzy_corrections={}
         )
 
+    def _determine_entity_type(self, target: str, intent_name: str) -> str:
+        """Determine the type of entity based on context and keywords."""
+        if not target:
+            return None
+
+        target_lower = target.lower()
+
+        # Intent-specific entity determination
+        if 'organization' in intent_name or 'companies' in intent_name:
+            return 'organization'
+        elif 'location' in intent_name or 'office' in intent_name:
+            return 'location'
+        elif 'contact' in intent_name:
+            return 'contact'
+        elif 'asset' in intent_name:
+            return 'asset_type'
+        elif 'document' in intent_name:
+            return 'document'
+
+        # Keyword-based detection
+        if any(org_keyword in target_lower for org_keyword in
+               ['company', 'client', 'organization', 'customer', 'corp', 'inc', 'ltd']):
+            return 'organization'
+        elif any(loc_keyword in target_lower for loc_keyword in
+                ['office', 'site', 'location', 'branch', 'building', 'floor']):
+            return 'location'
+        elif any(sys_keyword in target_lower for sys_keyword in
+                ['server', 'system', 'host', 'machine', 'workstation', 'desktop']):
+            return 'configuration'
+        elif any(person_keyword in target_lower for person_keyword in
+                ['john', 'jane', 'smith', 'manager', 'admin', 'engineer']):
+            return 'contact'
+        elif any(asset_keyword in target_lower for asset_keyword in
+                ['certificate', 'warranty', 'license', 'asset']):
+            return 'asset_type'
+
+        # Default based on intent
+        if 'configuration' in intent_name or 'server' in intent_name:
+            return 'configuration'
+        elif 'password' in intent_name:
+            return 'configuration'  # Passwords usually relate to systems
+
+        return 'ambiguous'  # Can't determine clearly
+
+    def _generate_disambiguation_suggestions(
+        self,
+        query: str,
+        primary: dict,
+        alternatives: list[dict]
+    ) -> list[str]:
+        """Generate suggestions to disambiguate unclear queries."""
+        suggestions = []
+
+        # Add clarifying prefixes
+        if primary['intent'] == 'general_search':
+            if any('organization' in alt['intent'] for alt in alternatives):
+                suggestions.append(f"find organization {query}")
+            if any('location' in alt['intent'] for alt in alternatives):
+                suggestions.append(f"show location {query}")
+            if any('contact' in alt['intent'] for alt in alternatives):
+                suggestions.append(f"find contact {query}")
+
+        # Add context specifiers
+        if 'for' not in query.lower() and 'at' not in query.lower():
+            suggestions.append(f"{query} for [specific organization]")
+            suggestions.append(f"{query} at [specific location]")
+
+        # Add type specifiers for assets
+        if 'asset' in primary['intent'] or any('asset' in alt['intent'] for alt in alternatives):
+            suggestions.append("show SSL certificates")
+            suggestions.append("list warranties")
+            suggestions.append("show all asset types")
+
+        return suggestions[:5]  # Return top 5 suggestions
+
+    def _generate_follow_up_suggestions(self, intent: str) -> list[str]:
+        """Generate follow-up query suggestions based on intent."""
+        suggestions = {
+            'find_organization': [
+                "show all configurations for this organization",
+                "list contacts for this organization",
+                "show locations for this organization"
+            ],
+            'find_locations': [
+                "show configurations at this location",
+                "list contacts at this location",
+                "show assets at this location"
+            ],
+            'find_flexible_assets': [
+                "show expiring certificates",
+                "list warranties by vendor",
+                "show asset fields"
+            ],
+            'find_documentation': [
+                "search runbooks",
+                "find setup guides",
+                "show knowledge base articles"
+            ],
+            'find_contact': [
+                "show contact's organization",
+                "list contact's responsibilities",
+                "show contact's location"
+            ]
+        }
+
+        return suggestions.get(intent, [])
+
     def _suggest_query_clarifications(self, query: str) -> list[str]:
         """Suggest query clarifications for ambiguous queries."""
         suggestions = []
+        query_lower = query.lower()
 
         # Check if organization is missing
-        if not any(word in query.lower() for word in ['for', 'at', 'in']):
+        if not any(word in query_lower for word in ['for', 'at', 'in']):
             suggestions.append(f"{query} for [organization name]")
 
         # Check if query type is unclear
-        if not any(word in query.lower() for word in ['show', 'list', 'find', 'get']):
+        if not any(word in query_lower for word in ['show', 'list', 'find', 'get', 'search']):
             suggestions.append(f"show {query}")
             suggestions.append(f"find {query}")
+            suggestions.append(f"search {query}")
 
-        return suggestions[:3]  # Return top 3 suggestions
+        # Suggest specific resource types if generic
+        if 'microsoft' in query_lower or 'google' in query_lower or 'amazon' in query_lower:
+            suggestions.append(f"find organization {query}")
+            suggestions.append(f"find contact at {query}")
+            suggestions.append(f"show configurations for {query}")
+
+        # Generic terms need specification
+        if any(term in query_lower for term in ['info', 'details', 'data', 'information']):
+            suggestions.append(f"show configurations {query}")
+            suggestions.append(f"find documentation {query}")
+            suggestions.append(f"list contacts {query}")
+
+        # Always provide at least one suggestion for general searches
+        if not suggestions:
+            suggestions.append(f"show all information for {query}")
+            suggestions.append(f"search documentation for {query}")
+            suggestions.append(f"find {query} in all resources")
+
+        return suggestions[:5]  # Return top 5 suggestions
 
     async def _execute_neo4j_query(self, neo4j_query) -> list[dict[str, Any]]:
         """Execute Neo4j query."""

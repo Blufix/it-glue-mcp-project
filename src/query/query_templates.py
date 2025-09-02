@@ -1,10 +1,10 @@
 """Query templates for common IT support scenarios."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Callable
-from enum import Enum
 from datetime import datetime, timedelta
-import re
+from enum import Enum
+from typing import Any, Optional
 
 
 class TemplateCategory(Enum):
@@ -44,7 +44,7 @@ class SubQuery:
     query: str
     purpose: str
     priority: QueryPriority
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
     depends_on: Optional[str] = None
 
 
@@ -55,9 +55,9 @@ class QueryTemplate:
     name: str
     description: str
     category: TemplateCategory
-    parameters: List[QueryParameter]
-    sub_queries: List[SubQuery]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    parameters: list[QueryParameter]
+    sub_queries: list[SubQuery]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,23 +65,23 @@ class ExpandedQuery:
     """Result of expanding a query template."""
     template_id: str
     template_name: str
-    expanded_queries: List[str]
-    parameters_used: Dict[str, Any]
+    expanded_queries: list[str]
+    parameters_used: dict[str, Any]
     estimated_time_ms: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class QueryTemplateEngine:
     """Engine for managing and expanding query templates."""
-    
+
     def __init__(self):
         """Initialize query template engine."""
         self.templates = self._initialize_templates()
-        
-    def _initialize_templates(self) -> Dict[str, QueryTemplate]:
+
+    def _initialize_templates(self) -> dict[str, QueryTemplate]:
         """Initialize the top 10 query templates."""
         templates = {}
-        
+
         # 1. Emergency Server Down
         templates["emergency_server_down"] = QueryTemplate(
             id="emergency_server_down",
@@ -136,7 +136,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 2. Password Recovery
         templates["password_recovery"] = QueryTemplate(
             id="password_recovery",
@@ -191,7 +191,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 3. Change Investigation
         templates["change_investigation"] = QueryTemplate(
             id="change_investigation",
@@ -246,7 +246,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 4. Impact Assessment
         templates["impact_assessment"] = QueryTemplate(
             id="impact_assessment",
@@ -295,7 +295,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 5. Security Audit
         templates["security_audit"] = QueryTemplate(
             id="security_audit",
@@ -345,7 +345,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 6. Network Connectivity Check
         templates["network_connectivity"] = QueryTemplate(
             id="network_connectivity",
@@ -387,7 +387,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 7. Backup Verification
         templates["backup_verification"] = QueryTemplate(
             id="backup_verification",
@@ -430,7 +430,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 8. Service Health Check
         templates["service_health"] = QueryTemplate(
             id="service_health",
@@ -473,7 +473,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 9. Configuration Drift Detection
         templates["config_drift"] = QueryTemplate(
             id="config_drift",
@@ -515,7 +515,7 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         # 10. Incident Root Cause Analysis
         templates["incident_root_cause"] = QueryTemplate(
             id="incident_root_cause",
@@ -564,65 +564,65 @@ class QueryTemplateEngine:
                 )
             ]
         )
-        
+
         return templates
-    
+
     def get_template(self, template_id: str) -> Optional[QueryTemplate]:
         """
         Get a query template by ID.
-        
+
         Args:
             template_id: Template identifier
-            
+
         Returns:
             Query template or None
         """
         return self.templates.get(template_id)
-    
+
     def list_templates(
         self,
         category: Optional[TemplateCategory] = None
-    ) -> List[QueryTemplate]:
+    ) -> list[QueryTemplate]:
         """
         List available templates.
-        
+
         Args:
             category: Optional category filter
-            
+
         Returns:
             List of templates
         """
         templates = list(self.templates.values())
-        
+
         if category:
             templates = [t for t in templates if t.category == category]
-        
+
         return templates
-    
+
     def expand_template(
         self,
         template_id: str,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> ExpandedQuery:
         """
         Expand a template with parameters.
-        
+
         Args:
             template_id: Template identifier
             parameters: Parameter values
-            
+
         Returns:
             Expanded query with all sub-queries
         """
         template = self.get_template(template_id)
         if not template:
             raise ValueError(f"Template {template_id} not found")
-        
+
         # Validate required parameters
         for param in template.parameters:
             if param.required and param.name not in parameters:
                 raise ValueError(f"Required parameter '{param.name}' missing")
-        
+
         # Apply defaults
         final_params = {}
         for param in template.parameters:
@@ -630,10 +630,10 @@ class QueryTemplateEngine:
                 final_params[param.name] = parameters[param.name]
             elif param.default_value is not None:
                 final_params[param.name] = param.default_value
-        
+
         # Add system parameters
         final_params["current_time"] = datetime.now().isoformat()
-        
+
         # Expand sub-queries
         expanded_queries = []
         for sub_query in template.sub_queries:
@@ -642,10 +642,10 @@ class QueryTemplateEngine:
                 final_params
             )
             expanded_queries.append(expanded)
-        
+
         # Estimate execution time
         estimated_time = len(expanded_queries) * 100  # 100ms per query estimate
-        
+
         return ExpandedQuery(
             template_id=template_id,
             template_name=template.name,
@@ -658,24 +658,24 @@ class QueryTemplateEngine:
                 "priority_breakdown": self._get_priority_breakdown(template)
             }
         )
-    
+
     def _expand_query_string(
         self,
         query: str,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> str:
         """
         Expand parameter placeholders in query string.
-        
+
         Args:
             query: Query string with placeholders
             parameters: Parameter values
-            
+
         Returns:
             Expanded query string
         """
         result = query
-        
+
         # Replace {{parameter}} style placeholders
         for key, value in parameters.items():
             placeholder = f"{{{{{key}}}}}"
@@ -687,19 +687,19 @@ class QueryTemplateEngine:
                     result = result.replace(placeholder, time_ago.isoformat())
                 else:
                     result = result.replace(placeholder, str(value))
-        
+
         return result
-    
+
     def _get_priority_breakdown(
         self,
         template: QueryTemplate
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         """
         Get priority breakdown for template.
-        
+
         Args:
             template: Query template
-            
+
         Returns:
             Count by priority level
         """
@@ -709,51 +709,51 @@ class QueryTemplateEngine:
             QueryPriority.MEDIUM.value: 0,
             QueryPriority.LOW.value: 0
         }
-        
+
         for sub_query in template.sub_queries:
             breakdown[sub_query.priority.value] += 1
-        
+
         return breakdown
-    
+
     def search_templates(
         self,
         keyword: str
-    ) -> List[QueryTemplate]:
+    ) -> list[QueryTemplate]:
         """
         Search templates by keyword.
-        
+
         Args:
             keyword: Search keyword
-            
+
         Returns:
             Matching templates
         """
         keyword_lower = keyword.lower()
         results = []
-        
+
         for template in self.templates.values():
             if (keyword_lower in template.name.lower() or
                 keyword_lower in template.description.lower()):
                 results.append(template)
-        
+
         return results
-    
+
     def get_template_suggestions(
         self,
         scenario: str
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get template suggestions for a scenario.
-        
+
         Args:
             scenario: User's scenario description
-            
+
         Returns:
             List of suggested template IDs
         """
         scenario_lower = scenario.lower()
         suggestions = []
-        
+
         # Keywords to template mapping
         keyword_map = {
             "server down": ["emergency_server_down", "impact_assessment"],
@@ -767,11 +767,11 @@ class QueryTemplateEngine:
             "impact": ["impact_assessment"],
             "audit": ["security_audit", "config_drift"]
         }
-        
+
         for keyword, template_ids in keyword_map.items():
             if keyword in scenario_lower:
                 suggestions.extend(template_ids)
-        
+
         # Remove duplicates while preserving order
         seen = set()
         unique_suggestions = []
@@ -779,5 +779,5 @@ class QueryTemplateEngine:
             if template_id not in seen:
                 seen.add(template_id)
                 unique_suggestions.append(template_id)
-        
+
         return unique_suggestions

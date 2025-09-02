@@ -2,21 +2,21 @@
 
 from .query_learning import (
     QueryLearningEngine,
-    QueryPersonalizer,
     QueryPattern,
-    UserProfile
+    QueryPersonalizer,
+    UserProfile,
 )
 from .smart_suggestions import (
-    SmartSuggestionEngine,
+    PrefixTrie,
     QuerySuggestion,
-    SuggestionType,
     SessionContext,
-    PrefixTrie
+    SmartSuggestionEngine,
+    SuggestionType,
 )
 
 __all__ = [
     "QueryLearningEngine",
-    "QueryPersonalizer", 
+    "QueryPersonalizer",
     "QueryPattern",
     "UserProfile",
     "SmartSuggestionEngine",

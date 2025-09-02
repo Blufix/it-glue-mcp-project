@@ -1,10 +1,10 @@
 """Enhanced Neo4j query builder with advanced fuzzy matching support."""
 
 import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-import re
+from typing import Any, Optional
 
 from src.query.fuzzy_matcher import FuzzyMatcher, MatchResult
 
@@ -17,29 +17,29 @@ class RelationshipType(Enum):
     BELONGS_TO = "BELONGS_TO"
     OWNS = "OWNS"
     MANAGES = "MANAGES"
-    
+
     # Technical
     DEPENDS_ON = "DEPENDS_ON"
     CONNECTS_TO = "CONNECTS_TO"
     HOSTED_ON = "HOSTED_ON"
     RUNS_ON = "RUNS_ON"
     USES = "USES"
-    
+
     # Service
     PROVIDES = "PROVIDES"
     REQUIRES = "REQUIRES"
     BACKS_UP = "BACKS_UP"
     MONITORS = "MONITORS"
-    
+
     # Documentation
     DOCUMENTS = "DOCUMENTS"
     REFERENCES = "REFERENCES"
-    
+
     # Support
     AFFECTS = "AFFECTS"
     RESOLVES = "RESOLVES"
     RELATED_TO = "RELATED_TO"
-    
+
     # Security
     AUTHENTICATES = "AUTHENTICATES"
     AUTHORIZES = "AUTHORIZES"
@@ -59,19 +59,19 @@ class FuzzyQueryPattern:
 class Neo4jQuery:
     """Structured Neo4j query with metadata."""
     cypher: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     description: str
     expected_return_type: str
-    fuzzy_matched_entities: List[MatchResult]
+    fuzzy_matched_entities: list[MatchResult]
     confidence: float
-    index_hints: List[str] = field(default_factory=list)
+    index_hints: list[str] = field(default_factory=list)
     traversal_depth: int = 5
     ranking_expression: Optional[str] = None
 
 
 class EnhancedNeo4jQueryBuilder:
     """Build Neo4j queries with advanced fuzzy matching support."""
-    
+
     def __init__(
         self,
         fuzzy_matcher: Optional[FuzzyMatcher] = None,
@@ -81,7 +81,7 @@ class EnhancedNeo4jQueryBuilder:
     ):
         """
         Initialize enhanced query builder.
-        
+
         Args:
             fuzzy_matcher: Fuzzy matcher instance
             enable_fuzzy: Enable fuzzy matching in queries
@@ -93,8 +93,8 @@ class EnhancedNeo4jQueryBuilder:
         self.fuzzy_threshold = fuzzy_threshold
         self.max_traversal_depth = max_traversal_depth
         self.query_templates = self._build_query_templates()
-    
-    def _build_query_templates(self) -> Dict[str, str]:
+
+    def _build_query_templates(self) -> dict[str, str]:
         """Build reusable Cypher query templates with fuzzy support."""
         return {
             # Basic entity queries with fuzzy support
@@ -105,8 +105,8 @@ class EnhancedNeo4jQueryBuilder:
                 WHERE o.name =~ $org_pattern
                    OR toLower(o.name) CONTAINS toLower($org_substring)
                    OR o.alternative_names =~ $org_pattern
-                WITH o, 
-                     CASE 
+                WITH o,
+                     CASE
                         WHEN o.name = $org_exact THEN 1.0
                         WHEN toLower(o.name) = toLower($org_exact) THEN 0.95
                         WHEN o.name =~ $org_pattern THEN $fuzzy_confidence
@@ -117,7 +117,7 @@ class EnhancedNeo4jQueryBuilder:
                 ORDER BY match_confidence DESC
                 LIMIT 10
             """,
-            
+
             'find_configurations_fuzzy': """
                 // Use composite index for performance
                 USING INDEX c:Configuration(name, type)
@@ -137,14 +137,14 @@ class EnhancedNeo4jQueryBuilder:
                 ORDER BY match_confidence DESC, c.updated_at DESC
                 LIMIT 50
             """,
-            
+
             # Dependency queries with cycle detection
             'find_dependencies_safe': """
                 MATCH path = (start:Configuration {name: $config_name})-[:DEPENDS_ON*1..$max_depth]-(dep)
                 WHERE NOT (dep)-[:DEPENDS_ON]->(start)  // Prevent cycles
                   AND all(r in relationships(path) WHERE r.active = true)
                 WITH path, dep,
-                     reduce(conf = 1.0, r in relationships(path) | 
+                     reduce(conf = 1.0, r in relationships(path) |
                             conf * coalesce(r.confidence, 0.9)) as path_confidence
                 WHERE path_confidence >= $min_confidence
                 RETURN
@@ -159,7 +159,7 @@ class EnhancedNeo4jQueryBuilder:
                 ORDER BY path_confidence DESC, depth
                 LIMIT 100
             """,
-            
+
             # Impact analysis with ranking
             'impact_analysis_ranked': """
                 MATCH path = (start:Configuration)-[:DEPENDS_ON|HOSTED_ON|RUNS_ON*1..$max_depth]-(affected)
@@ -167,9 +167,9 @@ class EnhancedNeo4jQueryBuilder:
                   AND NOT (affected)-[:DEPENDS_ON*1..2]->(start)  // Avoid circular dependencies
                 WITH path, affected,
                      length(path) as impact_distance,
-                     reduce(criticality = 0, n in nodes(path) | 
+                     reduce(criticality = 0, n in nodes(path) |
                             criticality + coalesce(n.criticality_score, 1)) as total_criticality
-                WITH affected, 
+                WITH affected,
                      min(impact_distance) as min_distance,
                      max(total_criticality) as max_criticality,
                      collect(path) as paths
@@ -183,7 +183,7 @@ class EnhancedNeo4jQueryBuilder:
                 ORDER BY criticality_score DESC, proximity
                 LIMIT 50
             """,
-            
+
             # Password queries with age ranking
             'find_passwords_ranked': """
                 MATCH (p:Password)-[:AUTHENTICATES]->(target)
@@ -202,7 +202,7 @@ class EnhancedNeo4jQueryBuilder:
                 ORDER BY risk_score DESC
                 LIMIT 20
             """,
-            
+
             # Service topology with fuzzy matching
             'service_topology_fuzzy': """
                 MATCH (s:Service)
@@ -222,7 +222,7 @@ class EnhancedNeo4jQueryBuilder:
                 ORDER BY s.criticality_score DESC
                 LIMIT 25
             """,
-            
+
             # Recent changes with fuzzy entity matching
             'recent_changes_fuzzy': """
                 MATCH (change:Change)-[:AFFECTS]->(target)
@@ -234,13 +234,13 @@ class EnhancedNeo4jQueryBuilder:
                        duration.between(change.timestamp, datetime()).hours as hours_ago
                 LIMIT 50
             """,
-            
+
             # Cross-organization search with fuzzy
             'cross_org_search': """
                 MATCH (entity)
                 WHERE ANY(label in labels(entity) WHERE label IN $entity_types)
                   AND (entity.name =~ $search_pattern
-                       OR ANY(prop in keys(entity) WHERE 
+                       OR ANY(prop in keys(entity) WHERE
                               toString(entity[prop]) =~ $search_pattern))
                 OPTIONAL MATCH (entity)-[:BELONGS_TO]->(org:Organization)
                 WITH entity, org,
@@ -256,51 +256,51 @@ class EnhancedNeo4jQueryBuilder:
                 LIMIT 100
             """
         }
-    
+
     def build_fuzzy_pattern(self, input_str: str, exact: bool = False) -> str:
         """
         Build a case-insensitive regex pattern for fuzzy matching.
-        
+
         Args:
             input_str: Input string
             exact: Whether to match exactly
-            
+
         Returns:
             Regex pattern for Neo4j
         """
         if exact:
             return f"(?i)^{re.escape(input_str)}$"
-        
+
         # Allow fuzzy matching with common variations
         escaped = re.escape(input_str)
-        
+
         # Allow common substitutions
         pattern = escaped
         pattern = pattern.replace(r"\ ", r"\s*")  # Flexible whitespace
         pattern = pattern.replace("s", "[sz]?")   # Optional 's'
-        
+
         return f"(?i).*{pattern}.*"
-    
+
     def build_query(
         self,
         intent: str,
-        entities: Dict[str, Any],
-        available_orgs: Optional[List[str]] = None
+        entities: dict[str, Any],
+        available_orgs: Optional[list[str]] = None
     ) -> Neo4jQuery:
         """
         Build a Neo4j query based on intent and entities.
-        
+
         Args:
             intent: Query intent
             entities: Extracted entities
             available_orgs: Available organizations for fuzzy matching
-            
+
         Returns:
             Neo4jQuery object with fuzzy support
         """
         fuzzy_matches = []
         confidence = 1.0
-        
+
         # Apply fuzzy matching to organization names
         if self.enable_fuzzy and 'organization' in entities and available_orgs:
             org_input = entities['organization']
@@ -309,7 +309,7 @@ class EnhancedNeo4jQueryBuilder:
                 available_orgs,
                 threshold=self.fuzzy_threshold
             )
-            
+
             if matches:
                 best_match = matches[0]
                 entities['organization'] = best_match['match']
@@ -320,7 +320,7 @@ class EnhancedNeo4jQueryBuilder:
                     method='fuzzy'
                 ))
                 confidence *= best_match['score']
-        
+
         # Build query based on intent
         if intent == 'find_configurations':
             return self._build_configuration_query(entities, fuzzy_matches, confidence)
@@ -336,11 +336,11 @@ class EnhancedNeo4jQueryBuilder:
             return self._build_service_topology_query(entities, fuzzy_matches, confidence)
         else:
             return self._build_general_search_query(entities, fuzzy_matches, confidence)
-    
+
     def _build_configuration_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build configuration search query with fuzzy support."""
@@ -348,11 +348,11 @@ class EnhancedNeo4jQueryBuilder:
         config_name = entities.get('configuration', '')
         config_type = entities.get('type')
         os = entities.get('os')
-        
+
         # Build patterns
         org_pattern = self.build_fuzzy_pattern(org_name) if org_name else '.*'
         config_pattern = self.build_fuzzy_pattern(config_name) if config_name else None
-        
+
         parameters = {
             'org_pattern': org_pattern,
             'org_id': None,
@@ -364,7 +364,7 @@ class EnhancedNeo4jQueryBuilder:
             'min_confidence': self.fuzzy_threshold,
             'fuzzy_confidence': confidence
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['find_configurations_fuzzy'],
             parameters=parameters,
@@ -375,24 +375,24 @@ class EnhancedNeo4jQueryBuilder:
             index_hints=['c:Configuration(name, type)', 'o:Organization(name)'],
             ranking_expression='match_confidence'
         )
-        
+
         return query
-    
+
     def _build_dependency_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build dependency query with cycle detection."""
         config_name = entities.get('configuration', '')
-        
+
         parameters = {
             'config_name': config_name,
             'max_depth': min(self.max_traversal_depth, 5),
             'min_confidence': self.fuzzy_threshold
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['find_dependencies_safe'],
             parameters=parameters,
@@ -403,24 +403,24 @@ class EnhancedNeo4jQueryBuilder:
             traversal_depth=parameters['max_depth'],
             ranking_expression='path_confidence'
         )
-        
+
         return query
-    
+
     def _build_impact_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build impact analysis query with criticality ranking."""
         config_name = entities.get('configuration', '')
         config_pattern = self.build_fuzzy_pattern(config_name)
-        
+
         parameters = {
             'config_pattern': config_pattern,
             'max_depth': min(self.max_traversal_depth, 5)
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['impact_analysis_ranked'],
             parameters=parameters,
@@ -431,25 +431,25 @@ class EnhancedNeo4jQueryBuilder:
             traversal_depth=parameters['max_depth'],
             ranking_expression='criticality_score DESC, proximity'
         )
-        
+
         return query
-    
+
     def _build_password_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build password query with age-based ranking."""
         target = entities.get('configuration', entities.get('organization', ''))
         target_pattern = self.build_fuzzy_pattern(target)
-        
+
         parameters = {
             'target_pattern': target_pattern,
             'target_id': None,
             'max_age': 365  # Default to passwords changed within a year
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['find_passwords_ranked'],
             parameters=parameters,
@@ -459,20 +459,20 @@ class EnhancedNeo4jQueryBuilder:
             confidence=confidence,
             ranking_expression='risk_score'
         )
-        
+
         return query
-    
+
     def _build_changes_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build recent changes query."""
         target = entities.get('configuration', entities.get('organization', ''))
         target_pattern = self.build_fuzzy_pattern(target)
         time_range = entities.get('time_range', 'recent')
-        
+
         # Map time range to days
         days_map = {
             'today': 1,
@@ -481,12 +481,12 @@ class EnhancedNeo4jQueryBuilder:
             'recent': 30
         }
         days_back = days_map.get(time_range, 7)
-        
+
         parameters = {
             'target_pattern': target_pattern,
             'days_back': days_back
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['recent_changes_fuzzy'],
             parameters=parameters,
@@ -496,23 +496,23 @@ class EnhancedNeo4jQueryBuilder:
             confidence=confidence,
             ranking_expression='hours_ago'
         )
-        
+
         return query
-    
+
     def _build_service_topology_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build service topology query."""
         service = entities.get('configuration', entities.get('service', ''))
         service_pattern = self.build_fuzzy_pattern(service)
-        
+
         parameters = {
             'service_pattern': service_pattern
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['service_topology_fuzzy'],
             parameters=parameters,
@@ -522,35 +522,35 @@ class EnhancedNeo4jQueryBuilder:
             confidence=confidence,
             ranking_expression='criticality_score'
         )
-        
+
         return query
-    
+
     def _build_general_search_query(
         self,
-        entities: Dict[str, Any],
-        fuzzy_matches: List[MatchResult],
+        entities: dict[str, Any],
+        fuzzy_matches: list[MatchResult],
         confidence: float
     ) -> Neo4jQuery:
         """Build general cross-entity search query."""
         search_term = entities.get('query', '')
         search_pattern = self.build_fuzzy_pattern(search_term)
-        
+
         # Default entity types to search
         entity_types = entities.get('entity_types', [
             'Configuration',
-            'Organization', 
+            'Organization',
             'Service',
             'Password',
             'Document'
         ])
-        
+
         parameters = {
             'search_pattern': search_pattern,
             'search_exact': search_term,
             'entity_types': entity_types,
             'min_relevance': self.fuzzy_threshold
         }
-        
+
         query = Neo4jQuery(
             cypher=self.query_templates['cross_org_search'],
             parameters=parameters,
@@ -560,33 +560,33 @@ class EnhancedNeo4jQueryBuilder:
             confidence=confidence,
             ranking_expression='relevance'
         )
-        
+
         return query
-    
+
     def optimize_query(self, query: Neo4jQuery) -> Neo4jQuery:
         """
         Optimize a query for performance.
-        
+
         Args:
             query: Query to optimize
-            
+
         Returns:
             Optimized query
         """
         optimized_cypher = query.cypher
-        
+
         # Add index hints if not present
         for hint in query.index_hints:
             if f"USING INDEX {hint}" not in optimized_cypher:
                 optimized_cypher = f"// Optimization hint\nUSING INDEX {hint}\n" + optimized_cypher
-        
+
         # Add query planner hints for large traversals
         if query.traversal_depth > 3:
             optimized_cypher = "// Use BFS for deep traversals\nCYPHER planner=cost\n" + optimized_cypher
-        
+
         # Add result limiting if not present
         if "LIMIT" not in optimized_cypher:
             optimized_cypher += "\nLIMIT 100"
-        
+
         query.cypher = optimized_cypher
         return query

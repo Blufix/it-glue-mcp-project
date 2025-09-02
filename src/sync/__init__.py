@@ -1,7 +1,7 @@
 """Data synchronization from IT Glue."""
 
-from .orchestrator import SyncOrchestrator
 from .incremental import IncrementalSync
+from .orchestrator import SyncOrchestrator
 
 __all__ = [
     'SyncOrchestrator',

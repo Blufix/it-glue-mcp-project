@@ -1,10 +1,10 @@
 """Context management for multi-query sessions."""
 
 from .session_manager import (
-    SessionContextManager,
+    ContextType,
     ConversationSession,
     QueryContext,
-    ContextType
+    SessionContextManager,
 )
 
 __all__ = [

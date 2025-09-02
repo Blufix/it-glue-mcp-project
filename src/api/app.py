@@ -2,17 +2,18 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, Dict, Any, List
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Query
+from typing import Optional
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from src.config.settings import settings
-from src.data import db_manager, get_uow
-from src.query import QueryEngine
-from src.sync import SyncOrchestrator
 from src.cache import CacheManager
+from src.config.settings import settings
+from src.data import db_manager
+from src.query import QueryEngine
 from src.search import SemanticSearch
+from src.sync import SyncOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +39,20 @@ class QueryRequest(BaseModel):
     """Query request model."""
     query: str
     company: Optional[str] = None
-    
-    
+
+
 class SyncRequest(BaseModel):
     """Sync request model."""
     organization_id: Optional[str] = None
     full_sync: bool = False
-    entity_types: Optional[List[str]] = None
-    
+    entity_types: Optional[list[str]] = None
+
 
 class CacheInvalidateRequest(BaseModel):
     """Cache invalidation request."""
     query: Optional[str] = None
     company: Optional[str] = None
-    
+
 
 # Global instances
 query_engine: Optional[QueryEngine] = None
@@ -64,32 +65,32 @@ semantic_search: Optional[SemanticSearch] = None
 async def startup_event():
     """Initialize services on startup."""
     global query_engine, sync_orchestrator, cache_manager, semantic_search
-    
+
     logger.info("Starting FastAPI application")
-    
+
     try:
         # Initialize database
         await db_manager.initialize()
         await db_manager.create_tables()
-        
+
         # Initialize cache
         cache_manager = CacheManager()
         await cache_manager.connect()
-        
+
         # Initialize search
         semantic_search = SemanticSearch()
         await semantic_search.initialize_collection()
-        
+
         # Initialize query engine
         query_engine = QueryEngine(
             cache=cache_manager
         )
-        
+
         # Initialize sync orchestrator
         sync_orchestrator = SyncOrchestrator()
-        
+
         logger.info("All services initialized")
-        
+
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
         raise
@@ -99,13 +100,13 @@ async def startup_event():
 async def shutdown_event():
     """Cleanup on shutdown."""
     logger.info("Shutting down FastAPI application")
-    
+
     try:
         if cache_manager:
             await cache_manager.disconnect()
-            
+
         await db_manager.close()
-        
+
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
 
@@ -129,7 +130,7 @@ async def detailed_health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "components": {}
     }
-    
+
     # Check database
     try:
         if await db_manager.healthcheck():
@@ -140,7 +141,7 @@ async def detailed_health_check():
     except Exception as e:
         health_status["components"]["database"] = f"error: {str(e)}"
         health_status["status"] = "unhealthy"
-        
+
     # Check cache
     try:
         if cache_manager:
@@ -154,7 +155,7 @@ async def detailed_health_check():
     except Exception as e:
         health_status["components"]["cache"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
-        
+
     # Check search
     try:
         if semantic_search:
@@ -168,7 +169,7 @@ async def detailed_health_check():
     except Exception as e:
         health_status["components"]["search"] = f"error: {str(e)}"
         health_status["status"] = "degraded"
-        
+
     return health_status
 
 
@@ -178,14 +179,14 @@ async def execute_query(request: QueryRequest):
     """Execute a natural language query."""
     if not query_engine:
         raise HTTPException(status_code=503, detail="Query engine not initialized")
-        
+
     try:
         result = await query_engine.process_query(
             query=request.query,
             company=request.company
         )
         return result
-        
+
     except Exception as e:
         logger.error(f"Query execution error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -201,12 +202,12 @@ async def get_query_history(
         async with db_manager.get_session() as session:
             from src.data import UnitOfWork
             uow = UnitOfWork(session)
-            
+
             queries = await uow.query_log.get_recent_queries(
                 limit=limit,
                 company=company
             )
-            
+
             return {
                 "success": True,
                 "queries": [
@@ -222,7 +223,7 @@ async def get_query_history(
                 ],
                 "count": len(queries)
             }
-            
+
     except Exception as e:
         logger.error(f"Failed to get query history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -237,7 +238,7 @@ async def trigger_sync(
     """Trigger data synchronization."""
     if not sync_orchestrator:
         raise HTTPException(status_code=503, detail="Sync orchestrator not initialized")
-        
+
     try:
         # Run sync in background
         if request.organization_id:
@@ -252,12 +253,12 @@ async def trigger_sync(
                 request.full_sync
             )
             message = f"{'Full' if request.full_sync else 'Incremental'} sync triggered"
-            
+
         return {
             "success": True,
             "message": message
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to trigger sync: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -270,10 +271,10 @@ async def get_sync_status():
         async with db_manager.get_session() as session:
             from src.data import UnitOfWork
             uow = UnitOfWork(session)
-            
+
             # Get all sync statuses
             statuses = await uow.sync_status.get_all()
-            
+
             return {
                 "success": True,
                 "statuses": [
@@ -288,7 +289,7 @@ async def get_sync_status():
                     for s in statuses
                 ]
             }
-            
+
     except Exception as e:
         logger.error(f"Failed to get sync status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -300,18 +301,18 @@ async def invalidate_cache(request: CacheInvalidateRequest):
     """Invalidate cache entries."""
     if not cache_manager:
         raise HTTPException(status_code=503, detail="Cache manager not initialized")
-        
+
     try:
         count = await cache_manager.invalidate(
             query=request.query,
             company=request.company
         )
-        
+
         return {
             "success": True,
             "invalidated_count": count
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to invalidate cache: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -322,14 +323,14 @@ async def get_cache_stats():
     """Get cache statistics."""
     if not cache_manager:
         raise HTTPException(status_code=503, detail="Cache manager not initialized")
-        
+
     try:
         stats = await cache_manager.get_stats()
         return {
             "success": True,
             "stats": stats
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get cache stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -347,28 +348,28 @@ async def get_admin_stats():
             "cache": {},
             "search": {}
         }
-        
+
         # Get entity counts
         async with db_manager.get_session() as session:
             from src.data import UnitOfWork
             uow = UnitOfWork(session)
-            
+
             # Count entities by type
             entities = await uow.itglue.get_all(limit=10000)
             entity_counts = {}
-            
+
             for entity in entities:
                 entity_type = entity.entity_type
                 entity_counts[entity_type] = entity_counts.get(entity_type, 0) + 1
-                
+
             stats["entities"] = {
                 "total": len(entities),
                 "by_type": entity_counts
             }
-            
+
             # Get query stats
             recent_queries = await uow.query_log.get_recent_queries(limit=1000)
-            
+
             if recent_queries:
                 response_times = [q.response_time_ms for q in recent_queries if q.response_time_ms]
                 stats["queries"] = {
@@ -377,20 +378,20 @@ async def get_admin_stats():
                     "min_response_time_ms": min(response_times) if response_times else 0,
                     "max_response_time_ms": max(response_times) if response_times else 0
                 }
-                
+
         # Get cache stats
         if cache_manager:
             stats["cache"] = await cache_manager.get_stats()
-            
+
         # Get search stats
         if semantic_search:
             stats["search"] = await semantic_search.get_collection_stats()
-            
+
         return {
             "success": True,
             "stats": stats
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get admin stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -427,7 +428,7 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         app,
         host="0.0.0.0",

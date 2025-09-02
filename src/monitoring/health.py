@@ -1,11 +1,11 @@
 """Health check system for monitoring service health."""
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Callable
-from enum import Enum
-import time
 import asyncio
-from datetime import datetime, timedelta
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
 
 class HealthStatus(Enum):
@@ -23,29 +23,29 @@ class ComponentHealth:
     status: HealthStatus
     message: str = ""
     last_check: float = field(default_factory=time.time)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
+    metadata: dict[str, Any] = field(default_factory=dict)
+
     @property
     def is_healthy(self) -> bool:
         """Check if component is healthy."""
         return self.status == HealthStatus.HEALTHY
-    
+
     @property
     def is_critical(self) -> bool:
         """Check if component is critical (unhealthy)."""
         return self.status == HealthStatus.UNHEALTHY
 
 
-@dataclass 
+@dataclass
 class HealthCheckResult:
     """Result of a health check."""
     overall_status: HealthStatus
-    components: List[ComponentHealth]
+    components: list[ComponentHealth]
     timestamp: float = field(default_factory=time.time)
     duration_ms: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "status": self.overall_status.value,
@@ -66,7 +66,7 @@ class HealthCheckResult:
 
 class HealthChecker:
     """Perform health checks on system components."""
-    
+
     def __init__(
         self,
         check_interval_seconds: int = 30,
@@ -74,18 +74,18 @@ class HealthChecker:
     ):
         """
         Initialize health checker.
-        
+
         Args:
             check_interval_seconds: Interval between health checks
             timeout_seconds: Timeout for individual checks
         """
         self.check_interval = check_interval_seconds
         self.timeout = timeout_seconds
-        self.checks: Dict[str, Callable] = {}
-        self.last_results: Dict[str, ComponentHealth] = {}
-        self.critical_components: Set[str] = set()
+        self.checks: dict[str, Callable] = {}
+        self.last_results: dict[str, ComponentHealth] = {}
+        self.critical_components: set[str] = set()
         self._running = False
-        
+
     def register_check(
         self,
         name: str,
@@ -94,7 +94,7 @@ class HealthChecker:
     ):
         """
         Register a health check.
-        
+
         Args:
             name: Component name
             check_func: Function that returns (bool, message, metadata)
@@ -103,7 +103,7 @@ class HealthChecker:
         self.checks[name] = check_func
         if critical:
             self.critical_components.add(name)
-    
+
     async def check_component(
         self,
         name: str,
@@ -111,11 +111,11 @@ class HealthChecker:
     ) -> ComponentHealth:
         """
         Check a single component.
-        
+
         Args:
             name: Component name
             check_func: Check function
-            
+
         Returns:
             Component health status
         """
@@ -131,7 +131,7 @@ class HealthChecker:
                     asyncio.get_event_loop().run_in_executor(None, check_func),
                     timeout=self.timeout
                 )
-            
+
             # Parse result
             if isinstance(result, tuple):
                 if len(result) == 3:
@@ -147,16 +147,16 @@ class HealthChecker:
                 is_healthy = bool(result)
                 message = "OK" if is_healthy else "Failed"
                 metadata = {}
-            
+
             status = HealthStatus.HEALTHY if is_healthy else HealthStatus.UNHEALTHY
-            
+
             return ComponentHealth(
                 name=name,
                 status=status,
                 message=message,
                 metadata=metadata
             )
-            
+
         except asyncio.TimeoutError:
             return ComponentHealth(
                 name=name,
@@ -169,24 +169,24 @@ class HealthChecker:
                 status=HealthStatus.UNHEALTHY,
                 message=f"Health check failed: {str(e)}"
             )
-    
+
     async def check_all(self) -> HealthCheckResult:
         """
         Run all health checks.
-        
+
         Returns:
             Overall health check result
         """
         start_time = time.time()
         tasks = []
-        
+
         # Create tasks for all checks
         for name, check_func in self.checks.items():
             tasks.append(self.check_component(name, check_func))
-        
+
         # Run all checks concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Process results
         components = []
         for result in results:
@@ -199,12 +199,12 @@ class HealthChecker:
             else:
                 components.append(result)
                 self.last_results[result.name] = result
-        
+
         # Determine overall status
         overall_status = self._calculate_overall_status(components)
-        
+
         duration_ms = (time.time() - start_time) * 1000
-        
+
         return HealthCheckResult(
             overall_status=overall_status,
             components=components,
@@ -214,17 +214,17 @@ class HealthChecker:
                 "critical_components": list(self.critical_components)
             }
         )
-    
+
     def _calculate_overall_status(
         self,
-        components: List[ComponentHealth]
+        components: list[ComponentHealth]
     ) -> HealthStatus:
         """
         Calculate overall health status.
-        
+
         Args:
             components: Component health statuses
-            
+
         Returns:
             Overall health status
         """
@@ -233,17 +233,17 @@ class HealthChecker:
             if component.name in self.critical_components:
                 if component.status == HealthStatus.UNHEALTHY:
                     return HealthStatus.UNHEALTHY
-        
+
         # Count statuses
         unhealthy_count = sum(
-            1 for c in components 
+            1 for c in components
             if c.status == HealthStatus.UNHEALTHY
         )
         degraded_count = sum(
             1 for c in components
             if c.status == HealthStatus.DEGRADED
         )
-        
+
         # Determine overall status
         if unhealthy_count > 0:
             # Non-critical components unhealthy = degraded
@@ -252,11 +252,11 @@ class HealthChecker:
             return HealthStatus.DEGRADED
         else:
             return HealthStatus.HEALTHY
-    
+
     async def start_background_checks(self):
         """Start background health check loop."""
         self._running = True
-        
+
         while self._running:
             try:
                 await self.check_all()
@@ -265,27 +265,27 @@ class HealthChecker:
                 # Log error but continue checking
                 print(f"Health check error: {e}")
                 await asyncio.sleep(self.check_interval)
-    
+
     def stop_background_checks(self):
         """Stop background health checks."""
         self._running = False
-    
-    def get_last_results(self) -> Dict[str, ComponentHealth]:
+
+    def get_last_results(self) -> dict[str, ComponentHealth]:
         """Get last health check results."""
         return self.last_results.copy()
-    
+
     def is_healthy(self) -> bool:
         """Check if system is healthy based on last results."""
         if not self.last_results:
             return False
-        
+
         for name in self.critical_components:
             if name in self.last_results:
                 if not self.last_results[name].is_healthy:
                     return False
-        
+
         return True
-    
+
     def register_default_checks(
         self,
         redis_client=None,
@@ -294,7 +294,7 @@ class HealthChecker:
     ):
         """
         Register default health checks.
-        
+
         Args:
             redis_client: Redis client instance
             neo4j_driver: Neo4j driver instance
@@ -309,9 +309,9 @@ class HealthChecker:
                     return True, "Redis is healthy", {"connections": info.get("connected_clients", 0)}
                 except Exception as e:
                     return False, f"Redis error: {str(e)}", {}
-            
+
             self.register_check("redis", check_redis, critical=True)
-        
+
         # Neo4j health check
         if neo4j_driver:
             async def check_neo4j():
@@ -322,9 +322,9 @@ class HealthChecker:
                     return True, "Neo4j is healthy", {}
                 except Exception as e:
                     return False, f"Neo4j error: {str(e)}", {}
-            
+
             self.register_check("neo4j", check_neo4j, critical=True)
-        
+
         # IT Glue API health check
         if itglue_client:
             async def check_itglue():
@@ -336,15 +336,15 @@ class HealthChecker:
                     }
                 except Exception as e:
                     return False, f"IT Glue API error: {str(e)}", {}
-            
+
             self.register_check("itglue_api", check_itglue, critical=False)
-        
+
         # Disk space check
         def check_disk_space():
             import shutil
             total, used, free = shutil.disk_usage("/")
             percent_used = (used / total) * 100
-            
+
             if percent_used > 90:
                 return False, f"Disk space critical: {percent_used:.1f}% used", {
                     "total_gb": total / (1024**3),
@@ -360,14 +360,14 @@ class HealthChecker:
                     "total_gb": total / (1024**3),
                     "free_gb": free / (1024**3)
                 }
-        
+
         self.register_check("disk_space", check_disk_space)
-        
+
         # Memory check
         def check_memory():
             import psutil
             memory = psutil.virtual_memory()
-            
+
             if memory.percent > 90:
                 return False, f"Memory critical: {memory.percent:.1f}% used", {
                     "total_gb": memory.total / (1024**3),
@@ -383,8 +383,7 @@ class HealthChecker:
                     "total_gb": memory.total / (1024**3),
                     "available_gb": memory.available / (1024**3)
                 }
-        
+
         self.register_check("memory", check_memory)
 
 
-from typing import Set

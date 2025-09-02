@@ -1,9 +1,10 @@
 """Prometheus metrics for IT Glue MCP Server."""
 
-from prometheus_client import Counter, Histogram, Gauge, Info
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable
+
+from prometheus_client import Counter, Gauge, Histogram, Info
 
 # Request metrics
 http_requests_total = Counter(
@@ -222,7 +223,7 @@ def metrics_decorator(metric_type: str = "http"):
             try:
                 result = await func(*args, **kwargs)
                 duration = time.time() - start_time
-                
+
                 if metric_type == "http":
                     # Extract method and endpoint from args if available
                     track_request_metrics("GET", func.__name__, 200, duration)
@@ -230,39 +231,39 @@ def metrics_decorator(metric_type: str = "http"):
                     track_query_metrics(func.__name__, "default", duration, 1.0)
                 elif metric_type == "mcp":
                     track_mcp_tool_call(func.__name__, "success", duration)
-                
+
                 return result
             except Exception as e:
                 duration = time.time() - start_time
-                
+
                 if metric_type == "http":
                     track_request_metrics("GET", func.__name__, 500, duration)
                 elif metric_type == "mcp":
                     track_mcp_tool_call(func.__name__, "error", duration)
-                
+
                 raise e
-        
+
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             start_time = time.time()
             try:
                 result = func(*args, **kwargs)
                 duration = time.time() - start_time
-                
+
                 if metric_type == "http":
                     track_request_metrics("GET", func.__name__, 200, duration)
-                
+
                 return result
             except Exception as e:
                 duration = time.time() - start_time
                 track_request_metrics("GET", func.__name__, 500, duration)
                 raise e
-        
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         else:
             return sync_wrapper
-    
+
     return decorator
 
 

@@ -2,15 +2,15 @@
 
 from .entity_extractor import (
     EntityExtractor,
-    ExtractedEntity,
     EntityType,
-    ExtractionContext
+    ExtractedEntity,
+    ExtractionContext,
 )
 from .intent_classifier import (
-    IntentClassifier,
     IntentClassification,
+    IntentClassifier,
+    IntentPattern,
     QueryIntent,
-    IntentPattern
 )
 
 __all__ = [

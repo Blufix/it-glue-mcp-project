@@ -1,8 +1,6 @@
 """Phonetic matching algorithms for fuzzy search."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set, Tuple
-import re
 from enum import Enum
 
 
@@ -21,21 +19,21 @@ class PhoneticMatch:
     algorithm: PhoneticAlgorithm
     phonetic_key: str
     confidence: float
-    metadata: Dict[str, any]
+    metadata: dict[str, any]
 
 
 class PhoneticMatcher:
     """Phonetic matching for sound-alike terms."""
-    
+
     def __init__(self, weight: float = 0.3):
         """
         Initialize phonetic matcher.
-        
+
         Args:
             weight: Weight of phonetic matching in overall score (default 30%)
         """
         self.weight = weight
-        
+
         # Soundex character mappings
         self.soundex_map = {
             'B': '1', 'F': '1', 'P': '1', 'V': '1',
@@ -46,11 +44,11 @@ class PhoneticMatcher:
             'M': '5', 'N': '5',
             'R': '6'
         }
-        
+
         # Double Metaphone rules
         self.metaphone_rules = self._init_metaphone_rules()
-        
-    def _init_metaphone_rules(self) -> Dict:
+
+    def _init_metaphone_rules(self) -> dict:
         """Initialize Double Metaphone transformation rules."""
         return {
             # Initial transformations
@@ -73,70 +71,70 @@ class PhoneticMatcher:
                 'SC': 'S', # Before E,I,Y -> S, else SK
             }
         }
-    
+
     def soundex(self, word: str) -> str:
         """
         Generate Soundex code for a word.
-        
+
         Args:
             word: Word to encode
-            
+
         Returns:
             Soundex code (e.g., "S530" for "Smith")
         """
         if not word:
             return ""
-        
+
         word = word.upper()
-        
+
         # Keep first letter
         soundex_code = word[0]
-        
+
         # Map remaining letters
         prev_code = self.soundex_map.get(word[0], '0')
-        
+
         for char in word[1:]:
             code = self.soundex_map.get(char, '0')
-            
+
             # Skip consecutive duplicates and vowels/H/W/Y
             if code != '0' and code != prev_code:
                 soundex_code += code
                 prev_code = code
             elif code == '0':
                 prev_code = '0'
-        
+
         # Pad with zeros and truncate to 4 characters
         soundex_code = (soundex_code + '000')[:4]
-        
+
         return soundex_code
-    
+
     def metaphone(self, word: str, max_length: int = 10) -> str:
         """
         Generate Metaphone code for a word.
-        
+
         Args:
             word: Word to encode
             max_length: Maximum length of result
-            
+
         Returns:
             Metaphone code
         """
         if not word:
             return ""
-        
+
         word = word.upper()
         result = []
-        
+
         # Apply initial transformations
         for pattern, replacement in self.metaphone_rules['initial'].items():
             if word.startswith(pattern):
                 word = replacement + word[len(pattern):]
                 break
-        
+
         i = 0
         while i < len(word) and len(result) < max_length:
             char = word[i]
-            
+
             # Check for multi-character patterns
             if i < len(word) - 1:
                 two_char = word[i:i+2]
@@ -146,7 +144,7 @@ class PhoneticMatcher:
                         result.append(replacement)
                     i += 2
                     continue
-            
+
             # Single character rules
             if char in self.metaphone_rules['vowels']:
                 if i == 0:  # Keep initial vowel
@@ -212,33 +210,33 @@ class PhoneticMatcher:
                     result.append('Y')
             elif char == 'Z':
                 result.append('S')
-            
+
             i += 1
-        
+
         return ''.join(result)[:max_length]
-    
-    def double_metaphone(self, word: str) -> Tuple[str, str]:
+
+    def double_metaphone(self, word: str) -> tuple[str, str]:
         """
         Generate Double Metaphone codes for a word.
-        
+
         Returns two codes: primary and alternate pronunciation.
-        
+
         Args:
             word: Word to encode
-            
+
         Returns:
             Tuple of (primary, alternate) metaphone codes
         """
         if not word:
             return ("", "")
-        
+
         # Generate primary code
         primary = self.metaphone(word)
-        
+
         # Generate alternate code with different rules
         word_upper = word.upper()
         alternate = []
-        
+
         # Alternate rules for common variations
         if 'SCH' in word_upper:
             # German/Yiddish pronunciation
@@ -256,9 +254,9 @@ class PhoneticMatcher:
             alternate = self.metaphone(alternate_word)
         else:
             alternate = primary  # No alternate pronunciation
-        
+
         return (primary, alternate if alternate != primary else "")
-    
+
     def match_phonetic(
         self,
         word1: str,
@@ -267,32 +265,32 @@ class PhoneticMatcher:
     ) -> float:
         """
         Calculate phonetic similarity between two words.
-        
+
         Args:
             word1: First word
             word2: Second word
             algorithm: Phonetic algorithm to use
-            
+
         Returns:
             Similarity score between 0 and 1
         """
         if not word1 or not word2:
             return 0.0
-        
+
         if algorithm == PhoneticAlgorithm.SOUNDEX:
             code1 = self.soundex(word1)
             code2 = self.soundex(word2)
             return 1.0 if code1 == code2 else 0.0
-            
+
         elif algorithm == PhoneticAlgorithm.METAPHONE:
             code1 = self.metaphone(word1)
             code2 = self.metaphone(word2)
             return 1.0 if code1 == code2 else 0.0
-            
+
         elif algorithm == PhoneticAlgorithm.DOUBLE_METAPHONE:
             primary1, alt1 = self.double_metaphone(word1)
             primary2, alt2 = self.double_metaphone(word2)
-            
+
             # Check all combinations
             if primary1 == primary2:
                 return 1.0
@@ -302,30 +300,30 @@ class PhoneticMatcher:
                 return 0.8
             else:
                 return 0.0
-        
+
         return 0.0
-    
+
     def find_phonetic_matches(
         self,
         query: str,
-        candidates: List[str],
+        candidates: list[str],
         threshold: float = 0.7,
         algorithm: PhoneticAlgorithm = PhoneticAlgorithm.DOUBLE_METAPHONE
-    ) -> List[PhoneticMatch]:
+    ) -> list[PhoneticMatch]:
         """
         Find phonetic matches for a query in candidates.
-        
+
         Args:
             query: Query term
             candidates: List of candidate strings
             threshold: Minimum similarity threshold
             algorithm: Phonetic algorithm to use
-            
+
         Returns:
             List of phonetic matches
         """
         matches = []
-        
+
         # Generate phonetic code for query
         if algorithm == PhoneticAlgorithm.SOUNDEX:
             query_code = self.soundex(query)
@@ -333,10 +331,10 @@ class PhoneticMatcher:
             query_code = self.metaphone(query)
         else:  # DOUBLE_METAPHONE
             query_code = self.double_metaphone(query)
-        
+
         for candidate in candidates:
             score = self.match_phonetic(query, candidate, algorithm)
-            
+
             if score >= threshold:
                 matches.append(PhoneticMatch(
                     original=query,
@@ -349,110 +347,110 @@ class PhoneticMatcher:
                         "weighted_score": score * self.weight
                     }
                 ))
-        
+
         # Sort by confidence
         matches.sort(key=lambda x: x.confidence, reverse=True)
-        
+
         return matches
-    
+
     def batch_phonetic_match(
         self,
-        queries: List[str],
-        candidates: List[str],
+        queries: list[str],
+        candidates: list[str],
         algorithm: PhoneticAlgorithm = PhoneticAlgorithm.DOUBLE_METAPHONE
-    ) -> Dict[str, List[PhoneticMatch]]:
+    ) -> dict[str, list[PhoneticMatch]]:
         """
         Perform phonetic matching for multiple queries.
-        
+
         Args:
             queries: List of query terms
             candidates: List of candidate strings
             algorithm: Phonetic algorithm to use
-            
+
         Returns:
             Dictionary mapping queries to their matches
         """
         results = {}
-        
+
         for query in queries:
             results[query] = self.find_phonetic_matches(
                 query, candidates, algorithm=algorithm
             )
-        
+
         return results
-    
+
     def get_phonetic_variants(
         self,
         word: str
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Get all phonetic encodings for a word.
-        
+
         Args:
             word: Word to encode
-            
+
         Returns:
             Dictionary of algorithm names to codes
         """
         primary, alternate = self.double_metaphone(word)
-        
+
         return {
             "soundex": self.soundex(word),
             "metaphone": self.metaphone(word),
             "double_metaphone_primary": primary,
             "double_metaphone_alternate": alternate
         }
-    
+
     def precompute_phonetic_index(
         self,
-        terms: List[str]
-    ) -> Dict[str, Set[str]]:
+        terms: list[str]
+    ) -> dict[str, set[str]]:
         """
         Precompute phonetic index for fast lookups.
-        
+
         Args:
             terms: List of terms to index
-            
+
         Returns:
             Dictionary mapping phonetic codes to terms
         """
         index = {}
-        
+
         for term in terms:
             # Get all phonetic codes
             variants = self.get_phonetic_variants(term)
-            
+
             for algorithm, code in variants.items():
                 if code:  # Skip empty codes
                     key = f"{algorithm}:{code}"
                     if key not in index:
                         index[key] = set()
                     index[key].add(term)
-        
+
         return index
-    
+
     def lookup_phonetic_index(
         self,
         query: str,
-        index: Dict[str, Set[str]]
-    ) -> Set[str]:
+        index: dict[str, set[str]]
+    ) -> set[str]:
         """
         Look up terms in phonetic index.
-        
+
         Args:
             query: Query term
             index: Precomputed phonetic index
-            
+
         Returns:
             Set of matching terms
         """
         matches = set()
         variants = self.get_phonetic_variants(query)
-        
+
         for algorithm, code in variants.items():
             if code:
                 key = f"{algorithm}:{code}"
                 if key in index:
                     matches.update(index[key])
-        
+
         return matches

@@ -1,17 +1,8 @@
 """Cache management for query results."""
 
+from .cache_warmer import CacheWarmer, WarmingQuery
 from .manager import CacheManager as LegacyCacheManager
-from .redis_cache import (
-    RedisCache,
-    CacheManager,
-    QueryType,
-    CacheStrategy,
-    CacheEntry
-)
-from .cache_warmer import (
-    CacheWarmer,
-    WarmingQuery
-)
+from .redis_cache import CacheEntry, CacheManager, CacheStrategy, QueryType, RedisCache
 
 __all__ = [
     'LegacyCacheManager',

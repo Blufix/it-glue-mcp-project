@@ -1,0 +1,1 @@
+"""MCP package stub for testing."""

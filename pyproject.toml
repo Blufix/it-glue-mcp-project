@@ -68,6 +68,7 @@ streamlit = "^1.29.0"
 plotly = "^5.18.0"
 streamlit-chat = "^0.1.1"
 jellyfish = "^1.2.0"
+pyjwt = "^2.10.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"

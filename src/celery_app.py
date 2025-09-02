@@ -1,9 +1,10 @@
 """Celery application configuration for IT Glue MCP Server."""
 
+
 from celery import Celery
 from celery.schedules import crontab
 from kombu import Queue
-import os
+
 from src.config.settings import settings
 
 # Create Celery app
@@ -27,14 +28,14 @@ app.conf.update(
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
-    
+
     # Result backend settings
     result_expires=3600,  # Results expire after 1 hour
     result_backend_transport_options={
         'master_name': 'mymaster',
         'visibility_timeout': 3600,
     },
-    
+
     # Task execution settings
     task_track_started=True,
     task_time_limit=3600,  # Hard time limit of 1 hour
@@ -42,7 +43,7 @@ app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=1000,
-    
+
     # Task routing
     task_routes={
         'src.tasks.sync_tasks.*': {'queue': 'sync'},
@@ -50,7 +51,7 @@ app.conf.update(
         'src.tasks.maintenance_tasks.*': {'queue': 'maintenance'},
         'src.tasks.notification_tasks.*': {'queue': 'notifications'},
     },
-    
+
     # Queue configuration
     task_queues=(
         Queue('default', routing_key='default'),
@@ -59,13 +60,13 @@ app.conf.update(
         Queue('maintenance', routing_key='maintenance'),
         Queue('notifications', routing_key='notifications'),
     ),
-    
+
     # Worker settings
     worker_pool='prefork',
     worker_concurrency=4,
     worker_log_format='[%(asctime)s: %(levelname)s/%(processName)s] %(message)s',
     worker_task_log_format='[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s',
-    
+
     # Beat schedule for periodic tasks
     beat_schedule={
         # Full sync every night at 2 AM
@@ -123,11 +124,11 @@ app.conf.update(
             }
         },
     },
-    
+
     # Error handling
     task_reject_on_worker_lost=True,
     task_ignore_result=False,
-    
+
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,

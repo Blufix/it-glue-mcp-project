@@ -10,11 +10,11 @@ import json
 from src.query.fuzzy_enhancer import QueryFuzzyEnhancer, EnhancedQuery
 from src.query.fuzzy_matcher import FuzzyMatcher
 from src.query.phonetic_matcher import PhoneticMatcher
-from src.query.query_templates import QueryTemplateManager, QueryPriority
+from src.query.query_templates import QueryTemplateEngine as QueryTemplateManager, QueryPriority
 from src.query.intelligent_query_processor import IntelligentQueryProcessor
 from src.nlp.entity_extractor import EntityExtractor
 from src.nlp.intent_classifier import IntentClassifier
-from src.context.session_manager import SessionManager
+from src.context.session_manager import SessionContextManager as SessionManager
 from src.ranking.result_ranker import ResultRanker
 from src.cache.redis_cache import RedisCache
 

@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 # Import modules to test
 from src.query.fuzzy_matcher import FuzzyMatcher, QueryFuzzyEnhancer
 from src.query.parser import QueryParser
-from src.query.validator import QueryValidator
+from src.query.validator import ZeroHallucinationValidator as QueryValidator
 
 
 class PerformanceMetrics:

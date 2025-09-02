@@ -1,11 +1,6 @@
 """Result ranking and relevance scoring module."""
 
-from .result_ranker import (
-    ResultRanker,
-    RankingFactors,
-    ScoredResult,
-    PopularityTracker
-)
+from .result_ranker import PopularityTracker, RankingFactors, ResultRanker, ScoredResult
 
 __all__ = [
     "ResultRanker",

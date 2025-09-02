@@ -7,10 +7,12 @@ An intelligent MCP (Model Context Protocol) server that transforms IT Glue's uns
 - **Natural Language Queries**: Ask questions in plain English ("What's the router IP for Company A?")
 - **Zero Hallucination**: Returns accurate data or "no data available" - never guesses
 - **@Organization Commands**: Target specific organizations with @faucets or @[org_name]
+- **Infrastructure Documentation**: Generate comprehensive infrastructure docs with `@<org_name> document infrastructure` or `@organisations <id/name> document infrastructure`
 - **Smart Search**: Type-based matching (searches for "firewall" find Sophos devices)
 - **Rich Output**: Displays IP addresses, serial numbers, dates, status, and more
 - **100% READ-ONLY**: Production-safe, never modifies IT Glue data
 - **Security First**: Passwords never displayed, only metadata shown
+- **Progress Tracking**: Real-time progress monitoring for long-running operations
 
 ## 🏗️ Architecture
 
@@ -118,6 +120,7 @@ Open your browser and navigate to:
 - [API Documentation](docs/api.md)
 - [Development Guide](docs/development.md)
 - [Deployment Guide](docs/deployment.md)
+- [Infrastructure Documentation](docs/infrastructure-documentation.md)
 
 ## 🏗️ Project Structure
 

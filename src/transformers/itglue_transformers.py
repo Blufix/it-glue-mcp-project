@@ -1,38 +1,36 @@
 """Transformers for IT Glue entity types."""
 
 import logging
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from typing import Any
 
-from src.transformers.base import BaseTransformer
-from src.services.itglue.models import (
-    Organization,
-    Configuration,
-    FlexibleAsset,
-    Password,
-    Document,
-    Contact,
-    Location
-)
 from src.data.models import ITGlueEntity
+from src.services.itglue.models import (
+    Configuration,
+    Document,
+    FlexibleAsset,
+    Organization,
+    Password,
+)
+from src.transformers.base import BaseTransformer
 
 logger = logging.getLogger(__name__)
 
 
 class OrganizationTransformer(BaseTransformer[Organization]):
     """Transform IT Glue organization data."""
-    
-    async def transform(self, data: Dict[str, Any]) -> Organization:
+
+    async def transform(self, data: dict[str, Any]) -> Organization:
         """Transform organization data.
-        
+
         Args:
             data: Raw organization data
-            
+
         Returns:
             Organization model instance
         """
         attributes = self.extract_attributes(data)
-        
+
         return Organization(
             id=self.extract_id(data),
             name=self.clean_text(attributes.get("name", "")),
@@ -44,18 +42,18 @@ class OrganizationTransformer(BaseTransformer[Organization]):
             attributes=attributes,
             relationships=self.extract_relationships(data)
         )
-    
-    async def transform_batch(self, data_list: List[Dict[str, Any]]) -> List[Organization]:
+
+    async def transform_batch(self, data_list: list[dict[str, Any]]) -> list[Organization]:
         """Transform batch of organizations.
-        
+
         Args:
             data_list: List of raw organization data
-            
+
         Returns:
             List of Organization instances
         """
         organizations = []
-        
+
         for item in data_list:
             try:
                 org = await self.transform(item)
@@ -63,25 +61,25 @@ class OrganizationTransformer(BaseTransformer[Organization]):
             except Exception as e:
                 logger.error(f"Failed to transform organization: {e}")
                 continue
-        
+
         return organizations
 
 
 class ConfigurationTransformer(BaseTransformer[Configuration]):
     """Transform IT Glue configuration data."""
-    
-    async def transform(self, data: Dict[str, Any]) -> Configuration:
+
+    async def transform(self, data: dict[str, Any]) -> Configuration:
         """Transform configuration data.
-        
+
         Args:
             data: Raw configuration data
-            
+
         Returns:
             Configuration model instance
         """
         attributes = self.extract_attributes(data)
         relationships = self.extract_relationships(data)
-        
+
         return Configuration(
             id=self.extract_id(data),
             organization_id=self.safe_get(relationships, "organization.data.id"),
@@ -100,18 +98,18 @@ class ConfigurationTransformer(BaseTransformer[Configuration]):
             attributes=attributes,
             relationships=relationships
         )
-    
-    async def transform_batch(self, data_list: List[Dict[str, Any]]) -> List[Configuration]:
+
+    async def transform_batch(self, data_list: list[dict[str, Any]]) -> list[Configuration]:
         """Transform batch of configurations.
-        
+
         Args:
             data_list: List of raw configuration data
-            
+
         Returns:
             List of Configuration instances
         """
         configurations = []
-        
+
         for item in data_list:
             try:
                 config = await self.transform(item)
@@ -119,28 +117,28 @@ class ConfigurationTransformer(BaseTransformer[Configuration]):
             except Exception as e:
                 logger.error(f"Failed to transform configuration: {e}")
                 continue
-        
+
         return configurations
 
 
 class FlexibleAssetTransformer(BaseTransformer[FlexibleAsset]):
     """Transform IT Glue flexible asset data."""
-    
-    async def transform(self, data: Dict[str, Any]) -> FlexibleAsset:
+
+    async def transform(self, data: dict[str, Any]) -> FlexibleAsset:
         """Transform flexible asset data.
-        
+
         Args:
             data: Raw flexible asset data
-            
+
         Returns:
             FlexibleAsset model instance
         """
         attributes = self.extract_attributes(data)
         relationships = self.extract_relationships(data)
-        
+
         # Parse traits (custom fields)
         traits = attributes.get("traits", {})
-        
+
         return FlexibleAsset(
             id=self.extract_id(data),
             organization_id=self.safe_get(relationships, "organization.data.id"),
@@ -152,18 +150,18 @@ class FlexibleAssetTransformer(BaseTransformer[FlexibleAsset]):
             attributes=attributes,
             relationships=relationships
         )
-    
-    async def transform_batch(self, data_list: List[Dict[str, Any]]) -> List[FlexibleAsset]:
+
+    async def transform_batch(self, data_list: list[dict[str, Any]]) -> list[FlexibleAsset]:
         """Transform batch of flexible assets.
-        
+
         Args:
             data_list: List of raw flexible asset data
-            
+
         Returns:
             List of FlexibleAsset instances
         """
         assets = []
-        
+
         for item in data_list:
             try:
                 asset = await self.transform(item)
@@ -171,25 +169,25 @@ class FlexibleAssetTransformer(BaseTransformer[FlexibleAsset]):
             except Exception as e:
                 logger.error(f"Failed to transform flexible asset: {e}")
                 continue
-        
+
         return assets
 
 
 class PasswordTransformer(BaseTransformer[Password]):
     """Transform IT Glue password data."""
-    
-    async def transform(self, data: Dict[str, Any]) -> Password:
+
+    async def transform(self, data: dict[str, Any]) -> Password:
         """Transform password data.
-        
+
         Args:
             data: Raw password data
-            
+
         Returns:
             Password model instance
         """
         attributes = self.extract_attributes(data)
         relationships = self.extract_relationships(data)
-        
+
         # Note: We don't store actual password values
         return Password(
             id=self.extract_id(data),
@@ -205,18 +203,18 @@ class PasswordTransformer(BaseTransformer[Password]):
             attributes={k: v for k, v in attributes.items() if k != "password"},
             relationships=relationships
         )
-    
-    async def transform_batch(self, data_list: List[Dict[str, Any]]) -> List[Password]:
+
+    async def transform_batch(self, data_list: list[dict[str, Any]]) -> list[Password]:
         """Transform batch of passwords.
-        
+
         Args:
             data_list: List of raw password data
-            
+
         Returns:
             List of Password instances
         """
         passwords = []
-        
+
         for item in data_list:
             try:
                 password = await self.transform(item)
@@ -224,25 +222,25 @@ class PasswordTransformer(BaseTransformer[Password]):
             except Exception as e:
                 logger.error(f"Failed to transform password: {e}")
                 continue
-        
+
         return passwords
 
 
 class DocumentTransformer(BaseTransformer[Document]):
     """Transform IT Glue document data."""
-    
-    async def transform(self, data: Dict[str, Any]) -> Document:
+
+    async def transform(self, data: dict[str, Any]) -> Document:
         """Transform document data.
-        
+
         Args:
             data: Raw document data
-            
+
         Returns:
             Document model instance
         """
         attributes = self.extract_attributes(data)
         relationships = self.extract_relationships(data)
-        
+
         return Document(
             id=self.extract_id(data),
             organization_id=self.safe_get(relationships, "organization.data.id"),
@@ -256,18 +254,18 @@ class DocumentTransformer(BaseTransformer[Document]):
             attributes=attributes,
             relationships=relationships
         )
-    
-    async def transform_batch(self, data_list: List[Dict[str, Any]]) -> List[Document]:
+
+    async def transform_batch(self, data_list: list[dict[str, Any]]) -> list[Document]:
         """Transform batch of documents.
-        
+
         Args:
             data_list: List of raw document data
-            
+
         Returns:
             List of Document instances
         """
         documents = []
-        
+
         for item in data_list:
             try:
                 doc = await self.transform(item)
@@ -275,13 +273,13 @@ class DocumentTransformer(BaseTransformer[Document]):
             except Exception as e:
                 logger.error(f"Failed to transform document: {e}")
                 continue
-        
+
         return documents
 
 
 class UnifiedEntityTransformer:
     """Transform IT Glue entities to unified database model."""
-    
+
     def __init__(self):
         """Initialize unified transformer."""
         self.transformers = {
@@ -291,24 +289,24 @@ class UnifiedEntityTransformer:
             "passwords": PasswordTransformer(),
             "documents": DocumentTransformer(),
         }
-    
+
     async def transform_to_entity(
         self,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         entity_type: str
     ) -> ITGlueEntity:
         """Transform IT Glue data to unified entity model.
-        
+
         Args:
             data: Raw IT Glue data
             entity_type: Type of entity
-            
+
         Returns:
             ITGlueEntity instance
         """
         # Get appropriate transformer
         transformer = self.transformers.get(entity_type)
-        
+
         if not transformer:
             logger.warning(f"No transformer for entity type: {entity_type}")
             # Create basic entity
@@ -320,10 +318,10 @@ class UnifiedEntityTransformer:
                 relationships={},
                 search_text=""
             )
-        
+
         # Transform to specific model
         model = await transformer.transform(data)
-        
+
         # Convert to unified entity
         return ITGlueEntity(
             itglue_id=model.id,
@@ -335,28 +333,28 @@ class UnifiedEntityTransformer:
             search_text=self._generate_search_text(model),
             last_synced=datetime.utcnow()
         )
-    
+
     def _generate_search_text(self, model: Any) -> str:
         """Generate searchable text from model.
-        
+
         Args:
             model: Model instance
-            
+
         Returns:
             Searchable text
         """
         search_parts = []
-        
+
         # Add name
         if hasattr(model, "name"):
             search_parts.append(model.name)
-        
+
         # Add description/notes
         if hasattr(model, "description"):
             search_parts.append(model.description)
         elif hasattr(model, "notes"):
             search_parts.append(model.notes)
-        
+
         # Add type-specific fields
         if hasattr(model, "hostname"):
             search_parts.append(model.hostname)
@@ -366,12 +364,12 @@ class UnifiedEntityTransformer:
             search_parts.append(model.serial_number)
         if hasattr(model, "username"):
             search_parts.append(model.username)
-        
+
         # Clean and join
         search_text = " ".join(filter(None, search_parts))
         return search_text.lower()
-    
-    def extract_id(self, data: Dict[str, Any]) -> str:
+
+    def extract_id(self, data: dict[str, Any]) -> str:
         """Extract ID from data."""
         if "id" in data:
             return str(data["id"])
