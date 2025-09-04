@@ -169,6 +169,13 @@ async def get_entity_stats(org_id: Optional[str] = None):
             except:
                 stats["passwords"] = 0
 
+            # Get flexible assets count using our working method
+            try:
+                flexible_assets = await client.get_all_flexible_assets_for_org(org_id)
+                stats["flexible_assets"] = len(flexible_assets)
+            except Exception as e:
+                stats["flexible_assets"] = 0
+
             await client.disconnect()
             return stats
 
@@ -515,8 +522,28 @@ async def search_itglue_data(query: str, org_id: Optional[str] = None):
         # Search documents if relevant keywords found (including "list documents")
         if "list document" in query_lower or any(word in query_lower for word in ["document", "documentation", "runbook", "sop", "procedure", "diagram", "network diagram", "backup", "disaster recovery", "dr plan", "license", "guide", "manual", "policy", "standard"]):
             try:
-                # For documents, use org_id directly
-                documents = await client.get_documents(org_id=org_id) if org_id else await client.get_documents()
+                # Get ALL documents including folders - simplified approach (NO RESTRICTIONS)
+                documents = []
+                try:
+                    # Try to get all documents including folders first
+                    if org_id:
+                        documents = await client.get_documents(org_id=org_id, include_folders=True)
+                        results.append(f"📂 **All Documents Retrieved: {len(documents)} total documents accessible!**\n")
+                    else:
+                        # Fallback to org-less call
+                        documents = await client.get_documents(include_folders=True)
+                        results.append(f"📂 **All Documents Retrieved: {len(documents)} total documents accessible!**\n")
+                except Exception as e:
+                    # Final fallback - try without folder parameter
+                    try:
+                        if org_id:
+                            documents = await client.get_documents(org_id=org_id)
+                        else:
+                            documents = await client.get_documents()
+                        results.append(f"📁 **Root Documents Only: {len(documents)} documents (folder access failed)**\n")
+                    except Exception as e2:
+                        st.warning(f"Document access failed: {e2}")
+                        documents = []
 
                 # If no documents found, add a note about API limitations
                 if not documents and any(word in query_lower for word in ["document", "documentation"]):
@@ -580,6 +607,13 @@ async def search_itglue_data(query: str, org_id: Optional[str] = None):
                         # Add document type if available
                         if attrs.get('document-type'):
                             doc_details.append(f"  • Type: {attrs.get('document-type')}")
+                        
+                        # Add folder information - BREAKTHROUGH FEATURE!
+                        folder_id = getattr(doc, 'document_folder_id', None) or attrs.get('document-folder-id')
+                        if folder_id:
+                            doc_details.append(f"  📂 **Located in Folder**: {folder_id}")
+                        else:
+                            doc_details.append(f"  📁 **Located in**: Root directory")
 
                         # Add created and updated dates
                         if attrs.get('created-at'):
@@ -608,6 +642,189 @@ async def search_itglue_data(query: str, org_id: Optional[str] = None):
             except Exception as e:
                 st.warning(f"Could not search documents: {e}")
 
+        # Search flexible assets if relevant keywords found (including "list flexible assets" and "list flexible asset [type]")
+        if "list flexible" in query_lower or "list asset" in query_lower or any(word in query_lower for word in ["flexible asset", "ssl certificate", "ssl", "warranty", "license", "contract", "asset", "certificate", "cert", "email", "office 365", "backup", "firewall"]):
+            try:
+                # Use our working flexible assets method with org_id parameter
+                if org_id:
+                    flexible_assets = await client.get_all_flexible_assets_for_org(org_id)
+                else:
+                    # Fallback: get assets from first organization
+                    orgs = await client.get_organizations()
+                    if orgs:
+                        flexible_assets = await client.get_all_flexible_assets_for_org(orgs[0].id)
+                    else:
+                        flexible_assets = []
+                
+                # Process the assets we found
+                for asset in flexible_assets:
+                    asset_name_lower = asset.name.lower() if hasattr(asset, 'name') else ""
+
+                    # Enhanced matching logic for flexible assets
+                    match_found = False
+
+                    # Support "list flexible asset [type]" syntax - NEW FEATURE
+                    if "list flexible asset " in query_lower:
+                        # Extract the asset type after "list flexible asset "
+                        type_part = query_lower.split("list flexible asset ", 1)[1].strip()
+                        if type_part in asset_name_lower or any(word in asset_name_lower for word in type_part.split()):
+                            match_found = True
+                    # If using "list flexible assets" or "list assets", show ALL assets
+                    elif "list flexible" in query_lower or "list asset" in query_lower or "list all asset" in query_lower:
+                        match_found = True
+                    else:
+                        # Remove common words for better matching
+                        meaningful_words = [w for w in query_lower.split()
+                                           if w not in ["what", "is", "the", "show", "get", "find", "list", "all", "for", "in", "a", "an", "asset", "assets", "flexible"]]
+
+                        # Enhanced type-specific matching
+                        asset_traits = getattr(asset, 'traits', {})
+                        asset_type_from_traits = asset_traits.get('type', '').lower() if asset_traits else ''
+                        
+                        # Check for specific asset types with enhanced matching
+                        if "email" in query_lower and ("email" in asset_name_lower or "office 365" in asset_name_lower or "email" in asset_type_from_traits):
+                            match_found = True
+                        elif "office 365" in query_lower and ("office 365" in asset_name_lower or "office 365" in asset_type_from_traits):
+                            match_found = True
+                        elif "ssl" in query_lower and ("ssl" in asset_name_lower or "certificate" in asset_name_lower):
+                            match_found = True
+                        elif "certificate" in query_lower and ("certificate" in asset_name_lower or "cert" in asset_name_lower):
+                            match_found = True
+                        elif "warranty" in query_lower and "warranty" in asset_name_lower:
+                            match_found = True
+                        elif "license" in query_lower and ("license" in asset_name_lower or "licence" in asset_name_lower):
+                            match_found = True
+                        elif "contract" in query_lower and "contract" in asset_name_lower:
+                            match_found = True
+                        elif "backup" in query_lower and "backup" in asset_name_lower:
+                            match_found = True
+                        elif "firewall" in query_lower and "firewall" in asset_name_lower:
+                            match_found = True
+                        # General asset search - match any meaningful word
+                        elif meaningful_words and any(word in asset_name_lower for word in meaningful_words):
+                            match_found = True
+                        # If just asking for "assets" or "flexible assets", show all for this org
+                        elif any(phrase in query_lower for phrase in ["all assets", "all flexible", "show assets", "list assets"]):
+                            match_found = True
+
+                    if match_found:
+                        sources.append({
+                            "type": "Flexible Asset",
+                            "name": asset.name,
+                            "confidence": 0.9
+                        })
+
+                        # Enhanced asset details display
+                        asset_details = []
+                        
+                        # Header with asset name and type
+                        asset_type_from_traits = asset.traits.get('type', '') if hasattr(asset, 'traits') and asset.traits else ''
+                        if asset_type_from_traits:
+                            asset_details.append(f"**{asset.name}** ({asset_type_from_traits} • Flexible Asset)")
+                        else:
+                            asset_details.append(f"**{asset.name}** (Flexible Asset)")
+
+                        # Process all traits with enhanced display for specific asset types
+                        if hasattr(asset, 'traits') and asset.traits:
+                            is_email_asset = "office 365" in asset.name.lower() or asset_type_from_traits.lower() == "office 365" or "email" in asset.name.lower()
+                            
+                            if is_email_asset:
+                                # Special enhanced display for email assets
+                                asset_details.append(f"  📧 **Email Configuration Details:**")
+                                
+                                # Group email-specific traits
+                                security_traits = []
+                                config_traits = []
+                                domain_traits = []
+                                
+                                for key, value in asset.traits.items():
+                                    if not value or (isinstance(value, str) and not value.strip()):
+                                        continue
+                                        
+                                    key_lower = key.lower()
+                                    display_key = key.replace('-', ' ').replace('_', ' ').title()
+                                    
+                                    # Format the value appropriately
+                                    if isinstance(value, dict):
+                                        if 'values' in value and value['values']:
+                                            if isinstance(value['values'][0], dict):
+                                                display_value = value['values'][0].get('name', str(value))
+                                            else:
+                                                display_value = str(value['values'][0])
+                                        else:
+                                            display_value = str(value)
+                                    elif isinstance(value, bool):
+                                        display_value = "✅ Yes" if value else "❌ No"
+                                    else:
+                                        display_value = str(value)
+                                    
+                                    # Categorize traits
+                                    if any(term in key_lower for term in ['spf', 'dkim', 'dmarc', 'mfa', 'security']):
+                                        security_traits.append(f"    🔒 **{display_key}**: {display_value}")
+                                    elif any(term in key_lower for term in ['domain', 'url', 'location', 'delivery']):
+                                        if 'domain' in key_lower:
+                                            domain_traits.append(f"    🌐 **{display_key}**: {display_value}")
+                                        else:
+                                            config_traits.append(f"    ⚙️ **{display_key}**: {display_value}")
+                                    elif key_lower != 'type':  # Skip the type field as we already show it
+                                        config_traits.append(f"    ⚙️ **{display_key}**: {display_value}")
+                                
+                                # Display categorized traits
+                                if domain_traits:
+                                    asset_details.extend(domain_traits)
+                                if config_traits:
+                                    asset_details.extend(config_traits)
+                                if security_traits:
+                                    asset_details.extend(security_traits)
+                            
+                            else:
+                                # Standard display for non-email assets
+                                trait_count = len([v for v in asset.traits.values() if v and str(v).strip()])
+                                asset_details.append(f"  • **Configuration**: {trait_count} active fields")
+                                
+                                # Show all meaningful traits
+                                displayed_count = 0
+                                for key, value in asset.traits.items():
+                                    if not value or (isinstance(value, str) and not value.strip()) or key.lower() == 'type':
+                                        continue
+                                    
+                                    display_key = key.replace('-', ' ').replace('_', ' ').title()
+                                    
+                                    # Format the value appropriately
+                                    if isinstance(value, dict):
+                                        if 'values' in value and value['values']:
+                                            if isinstance(value['values'][0], dict):
+                                                display_value = value['values'][0].get('name', str(value))
+                                            else:
+                                                display_value = str(value['values'][0])
+                                        else:
+                                            display_value = str(value)[:100] + "..." if len(str(value)) > 100 else str(value)
+                                    elif isinstance(value, bool):
+                                        display_value = "✅ Enabled" if value else "❌ Disabled"
+                                    else:
+                                        display_value = str(value)[:150] + "..." if len(str(value)) > 150 else str(value)
+                                    
+                                    asset_details.append(f"    • **{display_key}**: {display_value}")
+                                    displayed_count += 1
+                                    
+                                    # Limit to 10 traits for non-email assets to avoid overwhelming output
+                                    if displayed_count >= 10:
+                                        remaining = trait_count - displayed_count
+                                        if remaining > 0:
+                                            asset_details.append(f"    • ... and {remaining} more fields")
+                                        break
+                        
+                        # Add metadata
+                        if hasattr(asset, 'created_at') and asset.created_at:
+                            asset_details.append(f"  • **Created**: {asset.created_at.strftime('%Y-%m-%d')}")
+                        if hasattr(asset, 'updated_at') and asset.updated_at:
+                            asset_details.append(f"  • **Last Updated**: {asset.updated_at.strftime('%Y-%m-%d')}")
+                        
+                        asset_details.append("  • 📦 View complete details in IT Glue")
+                        results.append("\n".join(asset_details))
+            except Exception as e:
+                st.warning(f"Could not search flexible assets: {e}")
+
         await client.disconnect()
 
         # Format response
@@ -617,7 +834,64 @@ async def search_itglue_data(query: str, org_id: Optional[str] = None):
             if any("Password" in str(source.get("type")) for source in sources):
                 content += "\n\n🔐 **Security Note**: Actual passwords are not displayed. Access IT Glue directly to retrieve credentials."
         else:
-            content = f"No relevant information found for '{query}' in IT Glue. Try refining your search or check if you have the correct organization selected."
+            # Provide specific messages based on query type
+            if "list flexible" in query_lower or "flexible asset" in query_lower:
+                selected_org_name = next((org["display"] for org in st.session_state.get('orgs', []) if org["id"] == st.session_state.get('selected_org')), "the selected organization")
+                content = f"✅ **No Flexible Assets Found for {selected_org_name}**\n\n"
+                content += f"The API search completed successfully but no flexible assets matched your query criteria.\n\n"
+                content += "💡 **Try these search variations:**\n"
+                content += "• `list flexible assets` - Shows all flexible assets\n"
+                content += "• `email` - Find email configurations\n"
+                content += "• `office 365` - Find Microsoft 365 assets\n\n"
+                content += "🔧 **Common Flexible Asset Types:**\n"
+                content += "• **Email** - Office 365, Exchange configurations\n"
+                content += "• **SSL Certificate** - Certificate tracking\n"
+                content += "• **Active Directory** - Domain management\n"
+                content += "• **Firewall** - Network security\n\n"
+                content += "💡 **Available Flexible Asset Types & Examples:**\n\n"
+                
+                # Network Infrastructure
+                content += "🌐 **Network Infrastructure:**\n"
+                content += "• **LAN** - Local network documentation (subnets, routers, DHCP servers, switches)\n"
+                content += "• **Internet/WAN** - Wide area network configurations and ISP connections\n"
+                content += "• **Wireless** - WiFi networks, access points, and wireless security settings\n"
+                content += "• **Remote Access** - VPN configurations, terminal servers, and remote desktop setups\n\n"
+                
+                # Core Services
+                content += "🔧 **Core Services:**\n"
+                content += "• **Active Directory** - Domain controllers, OUs, security groups, authentication policies\n"
+                content += "• **Email** - Exchange servers, Office 365, mail flow, and email security (domains, servers, webmail URLs)\n"
+                content += "• **Backup** - Backup solutions, schedules, retention policies, and recovery procedures\n"
+                content += "• **Security** - Firewalls, antivirus, security policies, and access controls\n\n"
+                
+                # Applications & Platforms
+                content += "💻 **Applications & Platforms:**\n"
+                content += "• **Applications** - Business software, licenses, and application dependencies\n"
+                content += "• **Virtualization** - Hypervisors, virtual machines, and virtualization infrastructure\n"
+                content += "• **Microsoft 365** - Office 365 configurations, SharePoint, Teams settings\n"
+                content += "• **Azure Services** - Cloud resources, subscriptions, and Azure configurations\n\n"
+                
+                # Business Operations
+                content += "📋 **Business Operations:**\n"
+                content += "• **Licensing** - Software licenses, maintenance contracts, and compliance tracking\n"
+                content += "• **Printing** - Print servers, printers, and print queue management\n"
+                content += "• **Vendors** - Supplier information, contracts, and vendor relationships\n"
+                content += "• **Out Of Hours (OOH)** - After-hours procedures and emergency contacts\n\n"
+                
+                content += "📝 **Example Email Asset Structure:**\n"
+                content += "```\n"
+                content += "Name: Exchange 2013\n"
+                content += "Type: Exchange 2013\n"
+                content += "Domains: company.com\n"
+                content += "Email Servers: EXCH01 (Exchange Server)\n"
+                content += "Location: On-Premises\n"
+                content += "Inbound Delivery: Office 365\n"
+                content += "Webmail URL: https://webmail.company.com\n"
+                content += "```\n\n"
+                
+                content += "📚 **Note**: This organization may not have any flexible assets configured in IT Glue yet. Flexible assets are highly customizable templates that allow MSPs to document client infrastructure in a structured, standardized way. You can create flexible assets in the IT Glue portal using the built-in templates or design custom ones for your specific needs."
+            else:
+                content = f"No relevant information found for '{query}' in IT Glue. Try refining your search or check if you have the correct organization selected."
 
         return {
             "content": content,
@@ -817,10 +1091,37 @@ def render_sidebar():
                             counts['contacts'] = 0
                             
                         try:
-                            documents = await client.get_documents(org_id=org_id)
-                            counts['documents'] = len(documents)
+                            # Get ALL documents including folders - simplified approach
+                            all_documents = await client.get_documents(org_id=org_id, include_folders=True)
+                            counts['documents'] = len(all_documents)
+                            
+                            # For detailed breakdown, separate root vs folder docs
+                            try:
+                                root_documents = await client.get_documents(org_id=org_id)  # Root only
+                                counts['root_documents'] = len(root_documents)
+                                counts['folder_documents'] = len(all_documents) - len(root_documents)
+                            except:
+                                # Fallback if root-only call fails
+                                counts['root_documents'] = 0
+                                counts['folder_documents'] = len(all_documents)
                         except:
-                            counts['documents'] = 0
+                            # Final fallback - try root documents only
+                            try:
+                                root_documents = await client.get_documents(org_id=org_id)
+                                counts['documents'] = len(root_documents)
+                                counts['root_documents'] = len(root_documents)
+                                counts['folder_documents'] = 0
+                            except:
+                                counts['documents'] = 0
+                                counts['root_documents'] = 0
+                                counts['folder_documents'] = 0
+
+                        # Get flexible assets count using our working method
+                        try:
+                            flexible_assets = await client.get_all_flexible_assets_for_org(org_id) if org_id else []
+                            counts['flexible_assets'] = len(flexible_assets)
+                        except Exception as e:
+                            counts['flexible_assets'] = 0
 
                         await client.disconnect()
                         return counts
@@ -828,24 +1129,80 @@ def render_sidebar():
                     return asyncio.run(get_counts())
                 except Exception as e:
                     st.error(f"Failed to get entity counts: {e}")
-                    return {'total_configs': 0, 'config_types': {}, 'passwords': 0, 'contacts': 0, 'documents': 0}
+                    return {'total_configs': 0, 'config_types': {}, 'passwords': 0, 'contacts': 0, 'documents': 0, 'flexible_assets': 0}
 
             entity_counts = get_detailed_entity_counts(st.session_state.selected_org)
             
             # Display summary metrics
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Configurations", entity_counts['total_configs'])
                 st.metric("Passwords", entity_counts['passwords'])
             with col2:
                 st.metric("Contacts", entity_counts['contacts'])
-                st.metric("Documents", entity_counts['documents'])
+                # Enhanced document metrics showing breakthrough folder access
+                total_docs = entity_counts['documents']
+                root_docs = entity_counts.get('root_documents', 0)
+                folder_docs = entity_counts.get('folder_documents', 0)
+                
+                if folder_docs > 0:
+                    st.metric(
+                        "Documents (Total)", 
+                        total_docs, 
+                        help=f"📁 Root: {root_docs} • 📂 Folders: {folder_docs}"
+                    )
+                else:
+                    st.metric("Documents", entity_counts['documents'])
+            with col3:
+                st.metric("Flexible Assets", entity_counts.get('flexible_assets', 0))
+                # Add a second metric for better visual balance
+                st.metric("Total Items", 
+                         entity_counts['total_configs'] + 
+                         entity_counts['passwords'] + 
+                         entity_counts['contacts'] + 
+                         entity_counts['documents'] + 
+                         entity_counts.get('flexible_assets', 0))
             
             # Show configuration breakdown if available
             if entity_counts['config_types']:
                 with st.expander("Configuration Types", expanded=False):
                     for config_type, count in sorted(entity_counts['config_types'].items(), key=lambda x: x[1], reverse=True):
                         st.write(f"• **{config_type}**: {count}")
+            
+            # Show flexible asset types information
+            with st.expander("💡 Flexible Asset Types Guide", expanded=False):
+                st.markdown("""
+                **Flexible Assets** are customizable documentation templates for structured IT infrastructure documentation.
+                
+                **🌐 Network Infrastructure:**
+                • **LAN** - Local networks, subnets, DHCP
+                • **Internet/WAN** - ISP connections, routing
+                • **Wireless** - WiFi networks, access points
+                • **Remote Access** - VPN, terminal servers
+                
+                **🔧 Core Services:**
+                • **Active Directory** - Domain controllers, OUs
+                • **Email** - Exchange, Office 365, mail flow
+                • **Backup** - Solutions, schedules, policies
+                • **Security** - Firewalls, antivirus, policies
+                
+                **💻 Applications & Platforms:**
+                • **Applications** - Business software, licenses
+                • **Virtualization** - Hypervisors, VMs
+                • **Microsoft 365** - Office 365, SharePoint
+                • **Azure Services** - Cloud resources
+                
+                **📋 Business Operations:**
+                • **Licensing** - Software licenses, contracts
+                • **Printing** - Print servers, printers
+                • **Vendors** - Supplier relationships
+                • **Out Of Hours** - Emergency procedures
+                
+                *💡 Tip: Try typing "list flexible assets" in the chat to see detailed information!*
+                """)
+                
+                if entity_counts.get('flexible_assets', 0) == 0:
+                    st.info("💡 No flexible assets found for this organization. Try searching for specific asset types like 'email', 'ssl certificate', or 'firewall' in the chat.")
         
         # Sync status section
         st.markdown("### 🔄 Sync Status")
@@ -1088,8 +1445,8 @@ def render_metrics_dashboard():
 
     with col2:
         # Entity distribution
-        entity_types = ["Configurations", "Documents", "Passwords", "Contacts", "Networks"]
-        entity_counts = [1250, 3400, 890, 567, 245]
+        entity_types = ["Configurations", "Documents", "Passwords", "Contacts", "Flexible Assets"]
+        entity_counts = [1250, 3400, 890, 567, 325]
 
         fig = px.pie(
             values=entity_counts,

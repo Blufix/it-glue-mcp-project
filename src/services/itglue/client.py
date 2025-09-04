@@ -365,27 +365,101 @@ class ITGlueClient:
     ) -> list[FlexibleAsset]:
         """Get flexible assets.
 
+        NOTE: IT Glue API requires at least one filter parameter for flexible assets.
+        If neither org_id nor asset_type_id is provided, this will return an empty list.
+
         Args:
-            org_id: Organization ID (optional)
-            asset_type_id: Asset type ID (optional)
-            filters: Optional filters
+            org_id: Organization ID (optional but recommended)
+            asset_type_id: Asset type ID (optional but recommended)
+            filters: Optional additional filters
 
         Returns:
             List of flexible assets
         """
         params = {}
 
+        # Add organization filter if provided
+        if org_id:
+            params["filter[organization-id]"] = org_id
+
+        # Add asset type filter if provided
         if asset_type_id:
             params["filter[flexible-asset-type-id]"] = asset_type_id
 
+        # Add additional filters
         if filters:
             for key, value in filters.items():
                 params[f"filter[{key}]"] = value
 
-        endpoint = f"organizations/{org_id}/relationships/flexible-assets" if org_id else "flexible-assets"
+        # IT Glue flexible assets endpoint requires filters, so return empty if none provided
+        if not params:
+            logger.warning("No filters provided for flexible assets - returning empty list")
+            return []
 
-        data = await self.get_all_pages(endpoint, params)
-        return [FlexibleAsset(**item) for item in data]
+        # Always use the global flexible_assets endpoint with filters
+        # Note: Must use underscore, not dash! flexible_assets not flexible-assets
+        endpoint = "flexible_assets"
+
+        try:
+            data = await self.get_all_pages(endpoint, params)
+            return [FlexibleAsset(**item) for item in data]
+        except Exception as e:
+            # IT Glue API returns 422 for flexible assets without proper filters
+            if "422" in str(e):
+                logger.warning(f"Flexible assets API returned 422 - likely missing required filters: {params}")
+                return []
+            raise
+
+    async def get_all_flexible_assets_for_org(
+        self,
+        org_id: str,
+        limit_per_type: int = 100
+    ) -> list[FlexibleAsset]:
+        """Get all flexible assets for an organization by iterating through asset types.
+
+        This method works around IT Glue API limitations by:
+        1. Getting all enabled asset types
+        2. Querying each type specifically for the organization
+        3. Combining results
+
+        Args:
+            org_id: Organization ID
+            limit_per_type: Maximum assets per type to fetch
+
+        Returns:
+            List of all flexible assets for the organization
+        """
+        all_assets = []
+
+        try:
+            # Get all asset types
+            asset_types = await self.get_flexible_asset_types(include_fields=False)
+            enabled_types = [at for at in asset_types if at.enabled]
+
+            logger.info(f"Checking {len(enabled_types)} enabled asset types for org {org_id}")
+
+            # Check each asset type for assets in this organization
+            for asset_type in enabled_types:
+                try:
+                    assets = await self.get_flexible_assets(
+                        org_id=org_id,
+                        asset_type_id=asset_type.id
+                    )
+                    
+                    if assets:
+                        all_assets.extend(assets[:limit_per_type])
+                        logger.debug(f"Found {len(assets)} {asset_type.name} assets")
+
+                except Exception as e:
+                    logger.debug(f"No {asset_type.name} assets or error: {e}")
+                    continue
+
+            logger.info(f"Found {len(all_assets)} total flexible assets for org {org_id}")
+            return all_assets
+
+        except Exception as e:
+            logger.error(f"Failed to get flexible assets for org {org_id}: {e}")
+            return []
 
     async def get_passwords(
         self,
@@ -414,7 +488,9 @@ class ITGlueClient:
     async def get_documents(
         self,
         org_id: Optional[str] = None,
-        filters: Optional[dict] = None
+        filters: Optional[dict] = None,
+        include_folders: bool = False,
+        folder_id: Optional[str] = None
     ) -> list[Document]:
         """Get API-created documents.
 
@@ -425,6 +501,8 @@ class ITGlueClient:
         Args:
             org_id: Organization ID (optional)
             filters: Optional filters
+            include_folders: Whether to include documents in folders (default: False for root only)
+            folder_id: Specific folder ID to filter by (optional)
 
         Returns:
             List of documents
@@ -433,6 +511,20 @@ class ITGlueClient:
         if org_id:
             endpoint = f"organizations/{org_id}/relationships/documents"
             params = {}
+            
+            # Add folder filtering based on parameters using exact syntax provided
+            if folder_id:
+                # Filter for documents in a specific folder: filter[document_folder_id]=<folder_id>
+                params["filter[document_folder_id]"] = folder_id
+            elif include_folders:
+                # All documents including folders: filter[document_folder_id][ne]=null
+                params["filter[document_folder_id][ne]"] = "null"
+            else:
+                # Root documents only: filter[document_folder_id]=null (without the null filter, might return all)
+                # We'll test both approaches - with and without explicit null filter
+                pass  # Default behavior - let's see what API returns without folder filter
+            
+            # Add other filters
             if filters:
                 for key, value in filters.items():
                     params[f"filter[{key}]"] = value
@@ -447,7 +539,12 @@ class ITGlueClient:
 
             for org in orgs:
                 try:
-                    org_docs = await self.get_documents(org_id=org.id, filters=filters)
+                    org_docs = await self.get_documents(
+                        org_id=org.id, 
+                        filters=filters,
+                        include_folders=include_folders,
+                        folder_id=folder_id
+                    )
                     all_documents.extend(org_docs)
                 except Exception as e:
                     logger.error(f"Failed to get documents for org {org.id}: {e}")

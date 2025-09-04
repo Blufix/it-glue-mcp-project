@@ -58,8 +58,8 @@ class DocumentsHandler:
         """
         # Check cache first
         cache_key = f"documents:search:{self._hash_query(query)}:{organization or 'all'}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached search results for '{query}'")
                 return cached
@@ -70,16 +70,18 @@ class DocumentsHandler:
                 result = await self._semantic_search(query, organization, limit)
                 if result["count"] > 0:
                     # Cache for 10 minutes
-                    if self.cache:
-                        await self.cache.set(cache_key, result, ttl=600)
+                    if self.cache and hasattr(self.cache, 'query_cache'):
+                        from ..cache.redis_cache import QueryType
+                        await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
                     return result
 
             # Fall back to keyword search
             result = await self._keyword_search(query, organization, limit)
 
             # Cache for 10 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=600)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             return result
 
@@ -200,8 +202,8 @@ class DocumentsHandler:
         """
         # Check cache first
         cache_key = f"documents:detail:{document_id}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached document {document_id}")
                 return cached
@@ -241,8 +243,9 @@ class DocumentsHandler:
             }
 
             # Cache for 30 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=1800)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Retrieved document {document_id}")
             return result
@@ -622,6 +625,314 @@ class DocumentsHandler:
             return "checklist"
         else:
             return "document"
+
+    async def list_all_documents(
+        self,
+        organization: Optional[str] = None,
+        limit: int = MAX_DOCUMENTS_PER_RESPONSE,
+        include_folders: bool = False,
+        folder_id: Optional[str] = None
+    ) -> dict[str, Any]:
+        """List all documents, optionally filtered by organization and folders.
+
+        Args:
+            organization: Optional organization name to filter by
+            limit: Maximum number of results
+            include_folders: Whether to include documents in folders (default: False for root only)
+            folder_id: Specific folder ID to filter by (optional)
+
+        Returns:
+            Dictionary with document information
+        """
+        # Check cache first - include folder parameters in cache key
+        cache_key = f"documents:all:{organization or 'all'}:folders_{include_folders}:folder_{folder_id or 'none'}"
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
+            if cached:
+                logger.debug(f"Returning cached documents for {organization}")
+                return cached
+
+        try:
+            # Get organization ID if specified
+            org_id = None
+            org_name = organization
+            
+            if organization:
+                orgs = await self.client.get_organizations(filters={"name": organization})
+                if not orgs:
+                    # Try fuzzy match
+                    all_orgs = await self.client.get_organizations()
+                    org_match = self._find_best_match(
+                        organization,
+                        [(org.id, org.name) for org in all_orgs]
+                    )
+                    
+                    if not org_match:
+                        return {
+                            "success": False,
+                            "error": f"Organization '{organization}' not found",
+                            "documents": []
+                        }
+                    
+                    org_id = org_match[0]
+                    org_name = org_match[1]
+                else:
+                    org_id = orgs[0].id
+                    org_name = orgs[0].name
+
+            # Get documents with folder filtering
+            documents = await self.client.get_documents(
+                org_id=org_id,
+                include_folders=include_folders,
+                folder_id=folder_id
+            )
+
+            # Format response
+            result = {
+                "success": True,
+                "organization": org_name,
+                "count": len(documents),
+                "documents": [
+                    self._format_document(doc)
+                    for doc in documents[:limit]
+                ]
+            }
+
+            # Cache for 15 minutes
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
+
+            logger.info(f"Listed {len(result['documents'])} documents")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to list documents: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "documents": []
+            }
+
+    async def find_documents_for_org(
+        self,
+        organization: str,
+        category: Optional[str] = None,
+        include_folders: bool = False,
+        folder_id: Optional[str] = None
+    ) -> dict[str, Any]:
+        """Find documents for a specific organization.
+
+        Args:
+            organization: Organization name or ID
+            category: Optional document category to filter by
+            include_folders: Whether to include documents in folders (default: False for root only)
+            folder_id: Specific folder ID to filter by (optional)
+
+        Returns:
+            Dictionary with matching documents
+        """
+        # Check cache first - include folder parameters in cache key
+        cache_key = f"documents:org:{organization.lower()}:{category or 'all'}:folders_{include_folders}:folder_{folder_id or 'none'}"
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
+            if cached:
+                logger.debug(f"Returning cached documents for {organization}")
+                return cached
+
+        try:
+            # Find the organization
+            organizations = await self.client.get_organizations(
+                filters={"name": organization}
+            )
+
+            if not organizations:
+                # Try fuzzy match
+                all_orgs = await self.client.get_organizations()
+                org_match = self._find_best_match(
+                    organization,
+                    [(org.id, org.name) for org in all_orgs]
+                )
+
+                if not org_match:
+                    return {
+                        "success": False,
+                        "error": f"Organization '{organization}' not found",
+                        "documents": []
+                    }
+
+                org_id = org_match[0]
+                org_name = org_match[1]
+            else:
+                org_id = organizations[0].id
+                org_name = organizations[0].name
+
+            # Get documents for the organization with folder filtering
+            documents = await self.client.get_documents(
+                org_id=org_id,
+                include_folders=include_folders,
+                folder_id=folder_id
+            )
+
+            # Filter by category if specified
+            if category:
+                category_lower = category.lower()
+                documents = [
+                    doc for doc in documents
+                    if category_lower in (doc.name or "").lower()
+                    or category_lower in self._infer_document_type(doc).lower()
+                ]
+
+            # Format response
+            result = {
+                "success": True,
+                "organization_id": org_id,
+                "organization_name": org_name,
+                "category": category,
+                "count": len(documents),
+                "documents": [
+                    self._format_document(doc)
+                    for doc in documents
+                ]
+            }
+
+            # Cache for 15 minutes
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
+
+            logger.info(f"Found {len(result['documents'])} documents for {organization}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to find documents for {organization}: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "documents": []
+            }
+
+    async def get_document_details(
+        self,
+        document_id: str
+    ) -> dict[str, Any]:
+        """Get detailed information about a specific document.
+
+        Args:
+            document_id: Document ID
+
+        Returns:
+            Dictionary with document details
+        """
+        return await self.get_document_by_id(document_id)
+
+    async def get_document_categories(
+        self,
+        organization: Optional[str] = None
+    ) -> dict[str, Any]:
+        """Get document categories/types with counts.
+
+        Args:
+            organization: Optional organization to filter by
+
+        Returns:
+            Dictionary with category statistics
+        """
+        # Check cache first
+        cache_key = f"documents:categories:{organization or 'all'}"
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
+            if cached:
+                logger.debug("Returning cached document categories")
+                return cached
+
+        try:
+            # Get organization ID if specified
+            org_id = None
+            if organization:
+                orgs = await self.client.get_organizations(filters={"name": organization})
+                if orgs:
+                    org_id = orgs[0].id
+
+            # Get all documents
+            documents = await self.client.get_documents(org_id=org_id)
+
+            # Count document types
+            category_counts = {}
+            for doc in documents:
+                doc_type = self._infer_document_type(doc)
+                category_counts[doc_type] = category_counts.get(doc_type, 0) + 1
+
+            # Format response
+            categories = [
+                {
+                    "name": category,
+                    "count": count,
+                    "examples": [
+                        doc.name for doc in documents[:3]
+                        if self._infer_document_type(doc) == category
+                    ]
+                }
+                for category, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+            ]
+
+            result = {
+                "success": True,
+                "organization": organization,
+                "total_documents": len(documents),
+                "categories": categories,
+                "category_count": len(categories)
+            }
+
+            # Cache for 30 minutes
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
+
+            logger.info(f"Retrieved {len(categories)} document categories")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to get document categories: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "categories": []
+            }
+
+    def _find_best_match(
+        self,
+        query: str,
+        candidates: list[tuple]
+    ) -> Optional[tuple]:
+        """Find best matching candidate using fuzzy matching.
+
+        Args:
+            query: Search query
+            candidates: List of (id, name) tuples
+
+        Returns:
+            Best matching tuple or None
+        """
+        if not candidates:
+            return None
+
+        query_lower = query.lower()
+        best_match = None
+        best_score = 0
+
+        for candidate_id, candidate_name in candidates:
+            score = SequenceMatcher(
+                None,
+                query_lower,
+                candidate_name.lower()
+            ).ratio()
+
+            if score > best_score and score > 0.6:
+                best_score = score
+                best_match = (candidate_id, candidate_name)
+
+        return best_match
 
     def _hash_query(self, query: str) -> str:
         """Create a hash of the query for caching.
