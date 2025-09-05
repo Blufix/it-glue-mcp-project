@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from src.config.settings import settings
 from src.services.cache import CacheService
-from src.services.query_engine import QueryEngine
+from src.query.engine import QueryEngine
 
 from .base import BaseTool
 

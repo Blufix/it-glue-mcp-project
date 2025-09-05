@@ -66,7 +66,7 @@ class QueryToolTester:
             
             # Verify IT Glue API connectivity
             client = ITGlueClient()
-            orgs = await client.get_organizations(limit=1)
+            orgs = await client.get_organizations()
             if not orgs:
                 raise Exception("Cannot connect to IT Glue API")
                 
@@ -88,10 +88,10 @@ class QueryToolTester:
         
         try:
             # Execute query through the MCP tool
-            result = await self.server.server._tools["query"](
-                query=query,
-                company=FAUCETS_ORG_NAME
-            )
+            query_tool = self.server.server.tools.get('query')
+            if not query_tool:
+                raise Exception("Query tool not found in MCP server")
+            result = await query_tool(query=query, company=FAUCETS_ORG_NAME)
             
             response_time_ms = (time.time() - start_time) * 1000
             self.response_times.append(response_time_ms)
@@ -156,10 +156,10 @@ class QueryToolTester:
         start_time = time.time()
         
         try:
-            result = await self.server.server._tools["query"](
-                query=query,
-                company=FAUCETS_ORG_NAME
-            )
+            query_tool = self.server.server.tools.get('query')
+            if not query_tool:
+                raise Exception("Query tool not found in MCP server")
+            result = await query_tool(query=query, company=FAUCETS_ORG_NAME)
             
             response_time_ms = (time.time() - start_time) * 1000
             self.response_times.append(response_time_ms)
@@ -232,10 +232,10 @@ class QueryToolTester:
         start_time = time.time()
         
         try:
-            result = await self.server.server._tools["query"](
-                query=query,
-                company=FAUCETS_ORG_NAME
-            )
+            query_tool = self.server.server.tools.get('query')
+            if not query_tool:
+                raise Exception("Query tool not found in MCP server")
+            result = await query_tool(query=query, company=FAUCETS_ORG_NAME)
             
             response_time_ms = (time.time() - start_time) * 1000
             
@@ -278,10 +278,10 @@ class QueryToolTester:
         start_time = time.time()
         
         try:
-            result = await self.server.server._tools["query"](
-                query=query,
-                company=FAUCETS_ORG_NAME
-            )
+            query_tool = self.server.server.tools.get('query')
+            if not query_tool:
+                raise Exception("Query tool not found in MCP server")
+            result = await query_tool(query=query, company=FAUCETS_ORG_NAME)
             
             response_time_ms = (time.time() - start_time) * 1000
             self.response_times.append(response_time_ms)
@@ -337,10 +337,10 @@ class QueryToolTester:
         for query in queries:
             start_time = time.time()
             try:
-                result = await self.server.server._tools["query"](
-                    query=query,
-                    company=FAUCETS_ORG_NAME
-                )
+                query_tool = self.server.server.tools.get('query')
+                if not query_tool:
+                    raise Exception("Query tool not found in MCP server")
+                result = await query_tool(query=query, company=FAUCETS_ORG_NAME)
                 response_time_ms = (time.time() - start_time) * 1000
                 batch_times.append(response_time_ms)
                 self.response_times.append(response_time_ms)

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ITGlueModel(BaseModel):
@@ -11,7 +11,7 @@ class ITGlueModel(BaseModel):
 
     id: str
     type: str
-    attributes: dict[str, Any]
+    attributes: dict[str, Any] = Field(default_factory=dict)
     relationships: Optional[dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

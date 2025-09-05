@@ -36,8 +36,8 @@ class LocationsHandler:
         """
         # Check cache first
         cache_key = "locations:all"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug("Returning cached all locations")
                 return cached
@@ -65,8 +65,9 @@ class LocationsHandler:
             }
 
             # Cache for 30 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=1800)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Listed {len(result['locations'])} locations")
             return result
@@ -93,8 +94,8 @@ class LocationsHandler:
         """
         # Check cache first
         cache_key = f"locations:org:{organization.lower()}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached locations for {organization}")
                 return cached
@@ -147,8 +148,9 @@ class LocationsHandler:
             }
 
             # Cache for 30 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=1800)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Found {len(result['locations'])} locations for organization {organization}")
             return result
@@ -175,8 +177,8 @@ class LocationsHandler:
         """
         # Check cache first
         cache_key = f"locations:city:{city.lower()}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached locations for city {city}")
                 return cached
@@ -230,8 +232,9 @@ class LocationsHandler:
             }
 
             # Cache for 30 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=1800)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Found {len(result['locations'])} locations in {city}")
             return result
@@ -259,8 +262,8 @@ class LocationsHandler:
         """
         # Check cache first
         cache_key = f"locations:name:{name.lower()}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached location {name}")
                 return cached
@@ -329,8 +332,9 @@ class LocationsHandler:
             }
 
             # Cache for 30 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=1800)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Found location: {location.name}")
             return result

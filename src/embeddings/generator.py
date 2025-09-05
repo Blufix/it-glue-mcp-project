@@ -18,7 +18,7 @@ class EmbeddingGenerator:
 
     def __init__(
         self,
-        model_name: str = "all-MiniLM-L6-v2",
+        model_name: str = "nomic-embed-text",
         ollama_url: Optional[str] = None,
         openai_api_key: Optional[str] = None
     ):
@@ -33,15 +33,23 @@ class EmbeddingGenerator:
         self.ollama_url = ollama_url or settings.ollama_url
         self.openai_api_key = openai_api_key or settings.openai_api_key
 
-        # Initialize local model if available
-        self.local_model = None
-        try:
-            self.local_model = SentenceTransformer(model_name)
-            logger.info(f"Loaded local model: {model_name}")
-        except Exception as e:
-            logger.warning(f"Could not load local model {model_name}: {e}")
+        # Set dimension based on model (default to nomic-embed-text)
+        if model_name == "nomic-embed-text":
+            self.dimension = 768  # nomic-embed-text dimensions - CRITICAL: Ollama model
+        elif model_name == "all-MiniLM-L6-v2":
+            self.dimension = 384  # all-MiniLM-L6-v2 dimensions
+        else:
+            # Default to nomic-embed-text dimensions for consistency
+            self.dimension = 768  # nomic-embed-text dimensions
 
-        self.dimension = 384  # Default for all-MiniLM-L6-v2
+        # Initialize local model if available (but prefer Ollama for nomic-embed-text)
+        self.local_model = None
+        if model_name != "nomic-embed-text":
+            try:
+                self.local_model = SentenceTransformer(model_name)
+                logger.info(f"Loaded local model: {model_name}")
+            except Exception as e:
+                logger.warning(f"Could not load local model {model_name}: {e}")
 
     async def generate_embeddings(
         self,
@@ -136,7 +144,7 @@ class EmbeddingGenerator:
         async with aiohttp.ClientSession() as session:
             for text in texts:
                 data = {
-                    "model": "all-minilm",
+                    "model": "nomic-embed-text",  # Use nomic-embed-text for Ollama
                     "prompt": text
                 }
 

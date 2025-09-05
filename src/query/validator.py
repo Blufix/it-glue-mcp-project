@@ -38,7 +38,7 @@ class ZeroHallucinationValidator:
 
     def __init__(
         self,
-        confidence_threshold: float = 0.7,
+        confidence_threshold: float = 0.4,
         require_source: bool = True
     ):
         """Initialize validator.

@@ -1,9 +1,20 @@
-"""Data synchronization from IT Glue."""
+"""Sync module for IT Glue data synchronization."""
 
-from .incremental import IncrementalSync
+from .itglue_sync import (
+    ITGlueSyncManager,
+    ITGlueAPIClient,
+    RateLimiter,
+    sync_single_organization,
+    sync_all_organizations
+)
+
 from .orchestrator import SyncOrchestrator
 
 __all__ = [
-    'SyncOrchestrator',
-    'IncrementalSync'
+    'ITGlueSyncManager',
+    'ITGlueAPIClient', 
+    'RateLimiter',
+    'sync_single_organization',
+    'sync_all_organizations',
+    'SyncOrchestrator'
 ]

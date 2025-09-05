@@ -765,7 +765,7 @@ class ITGlueClient:
             response = await self._request(
                 "POST",
                 endpoint,
-                json=document_data
+                data=document_data
             )
             return response
         except Exception as e:

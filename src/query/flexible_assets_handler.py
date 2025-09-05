@@ -44,8 +44,8 @@ class FlexibleAssetsHandler:
         """
         # Check cache first
         cache_key = f"flexible_assets:all:{asset_type or 'all'}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached flexible assets for type {asset_type}")
                 return cached
@@ -72,10 +72,23 @@ class FlexibleAssetsHandler:
                 asset_type_id = asset_type_obj.id
                 asset_type_name = asset_type_obj.name
 
-            # Get flexible assets
-            assets = await self.client.get_flexible_assets(
-                asset_type_id=asset_type_id
-            )
+            # Get flexible assets using our working method
+            if asset_type_id:
+                # Use specific asset type filtering (this works)
+                assets = await self.client.get_flexible_assets(
+                    asset_type_id=asset_type_id
+                )
+            else:
+                # Get all assets for all organizations (fallback)
+                assets = []
+                organizations = await self.client.get_organizations()
+                for org in organizations[:5]:  # Limit to first 5 orgs for performance
+                    try:
+                        org_assets = await self.client.get_all_flexible_assets_for_org(org.id)
+                        assets.extend(org_assets[:20])  # Limit per org
+                    except Exception as e:
+                        logger.debug(f"Failed to get assets for org {org.id}: {e}")
+                        continue
 
             # Format response
             result = {
@@ -89,8 +102,9 @@ class FlexibleAssetsHandler:
             }
 
             # Cache for 15 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=900)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Listed {len(result['assets'])} flexible assets")
             return result
@@ -119,8 +133,8 @@ class FlexibleAssetsHandler:
         """
         # Check cache first
         cache_key = f"flexible_assets:org:{organization.lower()}:{asset_type or 'all'}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached assets for {organization}")
                 return cached
@@ -162,11 +176,16 @@ class FlexibleAssetsHandler:
                     asset_type_id = asset_type_obj.id
                     asset_type_name = asset_type_obj.name
 
-            # Get assets for the organization
-            assets = await self.client.get_flexible_assets(
-                org_id=org_id,
-                asset_type_id=asset_type_id
-            )
+            # Get assets for the organization using our working method
+            if asset_type_id:
+                # Use specific asset type filtering (this works)
+                assets = await self.client.get_flexible_assets(
+                    org_id=org_id,
+                    asset_type_id=asset_type_id
+                )
+            else:
+                # Get all assets for this organization
+                assets = await self.client.get_all_flexible_assets_for_org(org_id)
 
             # Format response
             result = {
@@ -182,8 +201,9 @@ class FlexibleAssetsHandler:
             }
 
             # Cache for 15 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=900)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Found {len(result['assets'])} assets for {organization}")
             return result
@@ -219,9 +239,22 @@ class FlexibleAssetsHandler:
                     asset_type_id = asset_type_obj.id
 
             # Get all assets (filtered by type if specified)
-            all_assets = await self.client.get_flexible_assets(
-                asset_type_id=asset_type_id
-            )
+            if asset_type_id:
+                # Use specific asset type filtering (this works)
+                all_assets = await self.client.get_flexible_assets(
+                    asset_type_id=asset_type_id
+                )
+            else:
+                # Get assets from all organizations (performance limited)
+                all_assets = []
+                organizations = await self.client.get_organizations()
+                for org in organizations[:3]:  # Limit to first 3 orgs for search performance
+                    try:
+                        org_assets = await self.client.get_all_flexible_assets_for_org(org.id)
+                        all_assets.extend(org_assets[:50])  # Limit per org for search
+                    except Exception as e:
+                        logger.debug(f"Failed to get assets for org {org.id}: {e}")
+                        continue
 
             # Search across asset names and traits
             query_lower = query.lower()
@@ -275,8 +308,8 @@ class FlexibleAssetsHandler:
         """
         # Check cache first
         cache_key = "flexible_assets:stats"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug("Returning cached asset statistics")
                 return cached
@@ -336,8 +369,9 @@ class FlexibleAssetsHandler:
             }
 
             # Cache for 1 hour
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=3600)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Retrieved statistics for {len(type_stats)} common asset types")
             return result
@@ -364,8 +398,8 @@ class FlexibleAssetsHandler:
         """
         # Check cache first
         cache_key = f"flexible_assets:detail:{asset_id}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached asset details for {asset_id}")
                 return cached
@@ -419,8 +453,9 @@ class FlexibleAssetsHandler:
             }
 
             # Cache for 30 minutes
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=1800)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Retrieved details for asset {asset_id}")
             return result

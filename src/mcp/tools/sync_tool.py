@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from src.services.sync import SyncService
+from src.sync.itglue_sync import ITGlueSyncManager as SyncService
 
 from .base import BaseTool
 

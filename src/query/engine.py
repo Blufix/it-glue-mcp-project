@@ -543,6 +543,11 @@ class QueryEngine:
             Cached response or None
         """
         try:
+            # Use the new cache interface if available
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                cache_key = f"query:{query}:company:{company or ''}"
+                return await self.cache.query_cache.get(cache_key)
+            # Fallback to legacy cache interface  
             return await self.cache.get(query, company)
         except Exception as e:
             logger.warning(f"Cache check failed: {e}")
@@ -562,12 +567,19 @@ class QueryEngine:
             response: Response to cache
         """
         try:
-            await self.cache.set(
-                query=query,
-                company=company,
-                response=response,
-                ttl=300  # 5 minutes
-            )
+            # Use the new cache interface if available
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                cache_key = f"query:{query}:company:{company or ''}"
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, response, QueryType.OPERATIONAL)
+            else:
+                # Fallback to legacy cache interface
+                await self.cache.set(
+                    query=query,
+                    company=company,
+                    response=response,
+                    ttl=300  # 5 minutes
+                )
         except Exception as e:
             logger.warning(f"Failed to cache response: {e}")
 
@@ -620,10 +632,15 @@ class QueryEngine:
             return company
             
         try:
-            # Search for organization by name
+            # First try exact search with API filter
             orgs = await self.itglue_client.get_organizations(
                 filters={"name": company}
             )
+            
+            # If no results from filtered search, get all organizations for fuzzy matching
+            if not orgs:
+                logger.debug(f"No exact match for '{company}', trying fuzzy search")
+                orgs = await self.itglue_client.get_organizations()
             
             if orgs:
                 # The response is a list of Organization objects
@@ -635,10 +652,10 @@ class QueryEngine:
                     if org_name and org_name.lower() == company.lower():
                         if org_id:
                             self._company_cache[company] = str(org_id)
-                            logger.info(f"Resolved company '{company}' to ID: {org_id}")
+                            logger.info(f"Resolved company '{company}' to ID: {org_id} (exact match)")
                             return str(org_id)
                 
-                # If no exact match, try partial match
+                # If no exact match, try partial match (company name contained in org name)
                 for org in orgs:
                     org_name = org.name if hasattr(org, 'name') else org.get('name', '')
                     org_id = org.id if hasattr(org, 'id') else org.get('id')
@@ -646,7 +663,18 @@ class QueryEngine:
                     if org_name and company.lower() in org_name.lower():
                         if org_id:
                             self._company_cache[company] = str(org_id)
-                            logger.info(f"Resolved company '{company}' to ID: {org_id} (partial match)")
+                            logger.info(f"Resolved company '{company}' to ID: {org_id} (partial match: '{org_name}')")
+                            return str(org_id)
+                
+                # Try reverse partial match (org name contained in company name)
+                for org in orgs:
+                    org_name = org.name if hasattr(org, 'name') else org.get('name', '')
+                    org_id = org.id if hasattr(org, 'id') else org.get('id')
+                    
+                    if org_name and org_name.lower() in company.lower():
+                        if org_id:
+                            self._company_cache[company] = str(org_id)
+                            logger.info(f"Resolved company '{company}' to ID: {org_id} (reverse match: '{org_name}')")
                             return str(org_id)
             
             logger.warning(f"Could not find organization for company: {company}")

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from typing import Optional
 
 from mcp.server import Server
@@ -13,6 +14,7 @@ from src.query import QueryEngine
 from src.search import HybridSearch
 from src.services.itglue import ITGlueClient
 from src.sync import SyncOrchestrator
+from src.monitoring.health import HealthChecker
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,7 @@ class ITGlueMCPServer:
         self.sync_orchestrator: Optional[SyncOrchestrator] = None
         self.cache_manager: Optional[CacheManager] = None
         self.itglue_client: Optional[ITGlueClient] = None
+        self.health_checker: Optional[HealthChecker] = None
         self._initialized = False
         self._register_tools()
         logger.info("IT Glue MCP Server initialized")
@@ -141,32 +144,31 @@ class ITGlueMCPServer:
         @self.server.tool()
         async def health() -> dict:
             """
-            Health check tool.
+            Comprehensive health check tool with database and service validation.
 
             Returns:
-                Server health status
+                Detailed server health status including all components
             """
             try:
-                # Check component health
-                health_status = {
-                    "status": "healthy",
-                    "version": "0.1.0",
-                    "environment": settings.environment,
-                    "components": {
-                        "mcp_server": "healthy",
-                        "query_engine": "healthy" if self.query_engine else "not_initialized",
-                        "search_engine": "healthy" if self.search_engine else "not_initialized"
-                    }
-                }
+                # Initialize health checker if not done
+                if not self.health_checker:
+                    await self._initialize_health_checker()
 
-                logger.debug(f"Health check: {health_status}")
-                return health_status
+                # Perform comprehensive health check
+                if self.health_checker:
+                    health_result = await self.health_checker.check_all()
+                    return health_result.to_dict()
+                else:
+                    # Fallback to basic health check
+                    return await self._basic_health_check()
 
             except Exception as e:
                 logger.error(f"Health check error: {e}", exc_info=True)
                 return {
                     "status": "unhealthy",
-                    "error": str(e)
+                    "timestamp": time.time(),
+                    "error": str(e),
+                    "components": {}
                 }
 
         @self.server.tool()
@@ -810,12 +812,149 @@ class ITGlueMCPServer:
             logger.error(f"Failed to initialize components: {e}")
             raise
 
+    async def _initialize_health_checker(self):
+        """Initialize comprehensive health checker."""
+        try:
+            self.health_checker = HealthChecker()
+            
+            # Register database health check
+            async def check_database():
+                try:
+                    # Test database connection
+                    async with db_manager.get_session() as session:
+                        result = await session.execute("SELECT 1 as health")
+                        await result.fetchone()
+                    
+                    # Get connection pool info if available
+                    pool_info = {}
+                    if hasattr(db_manager.engine.pool, 'size'):
+                        pool_info = {
+                            "pool_size": db_manager.engine.pool.size(),
+                            "checked_out": db_manager.engine.pool.checkedout()
+                        }
+                    
+                    return True, "Database connection healthy", {
+                        "connection_pool": pool_info,
+                        "url": str(db_manager.engine.url).replace(db_manager.engine.url.password or '', '***')
+                    }
+                except Exception as e:
+                    return False, f"Database error: {str(e)}", {}
+
+            self.health_checker.register_check("database", check_database, critical=True)
+            
+            # Register cache (Redis) health check  
+            if self.cache_manager:
+                async def check_redis():
+                    try:
+                        await self.cache_manager.ping()
+                        info = await self.cache_manager.info()
+                        return True, "Redis cache healthy", {
+                            "connected_clients": info.get("connected_clients", 0),
+                            "used_memory_human": info.get("used_memory_human", "unknown")
+                        }
+                    except Exception as e:
+                        return False, f"Redis error: {str(e)}", {}
+                        
+                self.health_checker.register_check("redis", check_redis, critical=False)
+            
+            # Register Qdrant health check
+            if self.search_engine and hasattr(self.search_engine, 'semantic_search'):
+                async def check_qdrant():
+                    try:
+                        client = self.search_engine.semantic_search.client
+                        collections = client.get_collections()
+                        collection_name = self.search_engine.semantic_search.collection_name
+                        
+                        # Check if our collection exists
+                        collection_exists = any(c.name == collection_name for c in collections.collections)
+                        
+                        if collection_exists:
+                            collection_info = client.get_collection(collection_name)
+                            return True, "Qdrant vector database healthy", {
+                                "collection": collection_name,
+                                "points_count": collection_info.points_count,
+                                "vectors_count": collection_info.vectors_count
+                            }
+                        else:
+                            return False, f"Qdrant collection '{collection_name}' not found", {}
+                    except Exception as e:
+                        return False, f"Qdrant error: {str(e)}", {}
+                        
+                self.health_checker.register_check("qdrant", check_qdrant, critical=False)
+            
+            # Register IT Glue API health check
+            if self.itglue_client:
+                async def check_itglue_api():
+                    try:
+                        start_time = time.time()
+                        # Simple API call to test connectivity
+                        response = await self.itglue_client.get("/organizations?page[size]=1")
+                        response_time = (time.time() - start_time) * 1000
+                        
+                        rate_limit = response.get('headers', {}).get('x-ratelimit-remaining', 'unknown')
+                        
+                        return True, "IT Glue API accessible", {
+                            "response_time_ms": round(response_time, 2),
+                            "rate_limit_remaining": rate_limit,
+                            "base_url": settings.it_glue_base_url
+                        }
+                    except Exception as e:
+                        return False, f"IT Glue API error: {str(e)}", {}
+                        
+                self.health_checker.register_check("it_glue_api", check_itglue_api, critical=False)
+            
+            # Register embedding service health check
+            if self.search_engine and hasattr(self.search_engine.semantic_search, 'embedding_generator'):
+                async def check_embedding_service():
+                    try:
+                        generator = self.search_engine.semantic_search.embedding_generator
+                        # Test with a simple embedding
+                        test_embeddings = await generator.generate_embeddings(["health check test"])
+                        
+                        if test_embeddings and len(test_embeddings[0]) > 0:
+                            return True, "Embedding service operational", {
+                                "model": generator.model_name,
+                                "dimension": generator.dimension,
+                                "ollama_url": generator.ollama_url
+                            }
+                        else:
+                            return False, "Embedding generation returned empty result", {}
+                    except Exception as e:
+                        return False, f"Embedding service error: {str(e)}", {}
+                        
+                self.health_checker.register_check("embedding_service", check_embedding_service, critical=False)
+            
+            # Register system resource checks
+            self.health_checker.register_default_checks()
+            
+            logger.info("Health checker initialized with comprehensive checks")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize health checker: {e}")
+            self.health_checker = None
+
+    async def _basic_health_check(self) -> dict:
+        """Fallback basic health check when comprehensive checker isn't available."""
+        return {
+            "status": "healthy",
+            "timestamp": time.time(),
+            "version": "0.1.0", 
+            "environment": settings.environment,
+            "components": {
+                "mcp_server": "healthy",
+                "query_engine": "healthy" if self.query_engine else "not_initialized",
+                "search_engine": "healthy" if self.search_engine else "not_initialized",
+                "itglue_client": "healthy" if self.itglue_client else "not_initialized",
+                "cache_manager": "healthy" if self.cache_manager else "not_initialized"
+            }
+        }
+
     async def run(self):
         """Run the MCP server."""
         logger.info("Starting MCP server on stdio")
 
         try:
-            async with stdio_server() as (read_stream, write_stream):
+            async with stdio_server(self.server) as (read_stream, write_stream):
                 logger.info("MCP server started successfully")
 
                 await self.server.run(

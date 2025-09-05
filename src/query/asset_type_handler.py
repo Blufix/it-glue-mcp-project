@@ -35,8 +35,8 @@ class AssetTypeHandler:
         """
         # Check cache first
         cache_key = "asset_types:list"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug("Returning cached asset types")
                 return cached
@@ -64,8 +64,9 @@ class AssetTypeHandler:
             }
 
             # Cache for 1 hour (asset types don't change often)
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=3600)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Listed {len(result['asset_types'])} asset types")
             return result
@@ -89,8 +90,8 @@ class AssetTypeHandler:
         """
         # Check cache first
         cache_key = f"asset_type:describe:{asset_type_name.lower()}"
-        if self.cache:
-            cached = await self.cache.get(cache_key)
+        if self.cache and hasattr(self.cache, 'query_cache'):
+            cached = await self.cache.query_cache.get(cache_key)
             if cached:
                 logger.debug(f"Returning cached description for {asset_type_name}")
                 return cached
@@ -106,15 +107,9 @@ class AssetTypeHandler:
                     "suggestions": await self._suggest_similar_types(asset_type_name)
                 }
 
-            # Get fields if not already included
-            if not asset_type.fields:
-                fields = await self.client.get_flexible_asset_fields(asset_type.id)
-            else:
-                # Parse fields from relationships
-                fields = []
-                for field_data in asset_type.fields:
-                    if isinstance(field_data, dict):
-                        fields.append(FlexibleAssetField(**field_data))
+            # Always fetch detailed field information via API
+            # Relationship data only contains basic references without attributes
+            fields = await self.client.get_flexible_asset_fields(asset_type.id)
 
             # Format response with detailed field information
             result = {
@@ -144,8 +139,9 @@ class AssetTypeHandler:
             }
 
             # Cache for 1 hour
-            if self.cache:
-                await self.cache.set(cache_key, result, ttl=3600)
+            if self.cache and hasattr(self.cache, 'query_cache'):
+                from ..cache.redis_cache import QueryType
+                await self.cache.query_cache.set(cache_key, result, QueryType.OPERATIONAL)
 
             logger.info(f"Described asset type '{asset_type.name}' with {len(fields)} fields")
             return result
